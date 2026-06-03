@@ -407,3 +407,40 @@ body {
 .passengers {
   background: #1268ff;
 }
+
+.driver-page {
+  display: block;
+  padding: 30px;
+}
+
+.driver-page .driver-header {
+  max-width: 980px;
+  margin: 0 auto 16px auto;
+  color: white;
+}
+
+.driver-page .driver-header h2,
+.driver-page .driver-header p {
+  color: white;
+}
+
+.driver-page > .driver-card,
+.driver-page > .driver-actions {
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.driver-page > .driver-card {
+  margin-bottom: 16px;
+}
+
+.driver-page > .driver-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.driver-page .driver-card {
+  min-height: 150px;
+}
