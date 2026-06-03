@@ -170,7 +170,7 @@ function App() {
               </div>
 
               <div className="map-panel">
-                <RouteMap />
+                <RouteMap fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} />
               </div>
 
               <div className="tools-panel">

@@ -96,7 +96,11 @@ export default function DriverView({ selectedFleet }) {
             <h2>Live Route Map</h2>
             <span>Road closures plotted from National Highways</span>
           </div>
-          <RouteMap height="calc(100vh - 285px)" />
+          <RouteMap
+            height="calc(100vh - 285px)"
+            fleetNo={selectedFleet.fleetNo}
+            reg={selectedFleet.reg}
+          />
         </section>
 
         <aside className="driver-only-right">

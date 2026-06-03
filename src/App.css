@@ -714,3 +714,29 @@ body {
     flex-direction: column;
   }
 }
+
+/* Live coach label shown on both office and driver maps */
+.coach-live-marker {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.coach-live-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 82px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #06101d;
+  color: #ffffff;
+  border: 3px solid #20d86b;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  font-size: 13px;
+}
+
+.coach-live-label strong {
+  letter-spacing: 0.4px;
+}
