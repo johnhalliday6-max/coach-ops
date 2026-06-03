@@ -11,13 +11,19 @@ export default async function handler(req, res) {
       {
         headers: {
           'Ocp-Apim-Subscription-Key': key,
+          Accept: 'application/json',
         },
       }
     )
 
-    const data = await response.json()
+    const text = await response.text()
 
-    return res.status(200).json(data)
+    return res.status(200).json({
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      preview: text.slice(0, 1000),
+    })
   } catch (error) {
     return res.status(500).json({
       error: 'Failed to fetch National Highways data',
