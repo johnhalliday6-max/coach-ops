@@ -56,6 +56,28 @@ function FollowCoach({ position, enabled, zoom = 16 }) {
   return null;
 }
 
+
+function MapUserControl({ onUserMove, disabled }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (disabled) return undefined;
+    const stopAuto = () => onUserMove?.();
+    map.on("dragstart", stopAuto);
+    map.on("zoomstart", stopAuto);
+    map.on("mousedown", stopAuto);
+    map.on("touchstart", stopAuto);
+    return () => {
+      map.off("dragstart", stopAuto);
+      map.off("zoomstart", stopAuto);
+      map.off("mousedown", stopAuto);
+      map.off("touchstart", stopAuto);
+    };
+  }, [disabled, map, onUserMove]);
+
+  return null;
+}
+
 function mph(speedMps) {
   if (speedMps == null || Number.isNaN(Number(speedMps))) return null;
   return Math.max(0, Math.round(Number(speedMps) * 2.23694));
@@ -74,6 +96,7 @@ export default function RouteMap({
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
+  const [mapInteracted, setMapInteracted] = useState(false);
 
   const coachIcon = useMemo(
     () =>
@@ -157,6 +180,10 @@ export default function RouteMap({
   void showDefaultRoute;
   const center = navigationMode || followCoach ? coachPosition : coachPosition || [52.6, -0.6];
 
+  useEffect(() => {
+    setMapInteracted(false);
+  }, [routeId]);
+
   return (
     <MapContainer
       center={center}
@@ -164,6 +191,7 @@ export default function RouteMap({
       style={{ height, width: "100%" }}
       zoomControl={!navigationMode}
     >
+      <MapUserControl onUserMove={() => setMapInteracted(true)} disabled={navigationMode} />
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -172,9 +200,9 @@ export default function RouteMap({
       <FitMapToRoute
         positions={activeRouteLine}
         routeId={routeId}
-        enabled={fitRoute && !followCoach && !navigationMode}
+        enabled={fitRoute && !followCoach && !navigationMode && !mapInteracted}
       />
-      <FollowCoach position={coachPosition} enabled={followCoach || navigationMode} zoom={navigationMode ? 16 : 15} />
+      <FollowCoach position={coachPosition} enabled={(followCoach && !mapInteracted) || navigationMode} zoom={navigationMode ? 17 : 15} />
 
       {shouldShowRoute && (
         <>

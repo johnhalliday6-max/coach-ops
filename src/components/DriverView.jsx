@@ -264,6 +264,18 @@ export default function DriverView({ selectedFleet }) {
   };
 
   useEffect(() => {
+    const reacquireWakeLock = () => {
+      if (document.visibilityState === "visible" && tracking) {
+        wakeLockRef.current = null;
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", reacquireWakeLock);
+    return () => document.removeEventListener("visibilitychange", reacquireWakeLock);
+  }, [tracking]);
+
+  useEffect(() => {
     return () => {
       if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
       if (wakeLockRef.current) wakeLockRef.current.release?.();
@@ -332,27 +344,13 @@ export default function DriverView({ selectedFleet }) {
   }
 
   if (navMode && routeSummary) {
+    const navSpeed = currentMph(lastPosition?.speedMps);
+
     return (
-      <main className="satnav-page">
-        <section className="satnav-top-card">
-          <div>
-            <strong>{vehicle.fleetNo} · {vehicle.reg}</strong>
-            <p>{routeSummary.destination}</p>
-          </div>
-          <button onClick={() => setNavMode(false)}>Route setup</button>
-        </section>
-
-        <section className="satnav-map-wrap">
-          <div className="satnav-instruction-card">
-            <div className="satnav-distance">{formatDistance(nextStep)}</div>
-            <div>
-              <h1>{nextStep?.instruction || "Follow current route"}</h1>
-              <p>{nextStep?.roadName || routeSummary.destination}</p>
-            </div>
-          </div>
-
+      <main className="satnav-page satnav-drive-mode">
+        <section className="satnav-map-wrap satnav-map-full">
           <RouteMap
-            height="calc(100vh - 190px)"
+            height="100vh"
             fleetNo={vehicle.fleetNo}
             reg={vehicle.reg}
             liveTracking
@@ -361,39 +359,50 @@ export default function DriverView({ selectedFleet }) {
             fitRoute={false}
           />
 
+          <div className="satnav-top-strip">
+            <strong>{vehicle.fleetNo} · {vehicle.reg}</strong>
+            <span>{routeSummary.destination}</span>
+            <button onClick={() => setNavMode(false)}>Setup</button>
+          </div>
+
+          <div className="satnav-instruction-card">
+            <div className="satnav-distance">{formatDistance(nextStep)}</div>
+            <div>
+              <h1>{nextStep?.instruction || "Follow current route"}</h1>
+              <p>{nextStep?.roadName || routeSummary.destination}</p>
+            </div>
+          </div>
+
           <div className="satnav-speed-panel">
             <div className="speed-limit-circle">
               <span>LIMIT</span>
               <strong>--</strong>
+              <small>checking</small>
             </div>
             <div className="current-speed-box">
               <span>YOU</span>
-              <strong>{currentMph(lastPosition?.speedMps)}</strong>
+              <strong>{navSpeed}</strong>
               <small>mph</small>
             </div>
           </div>
 
-          <div className="satnav-actions">
-            <button className="call" onClick={() => notify("Driver requested phone call from Control", "CALL_CONTROL")}>📞 Office</button>
-            <button className="breakdown" onClick={() => notify("HELP REQUEST - driver needs assistance", "HELP_REQUEST")}>🚨 Help</button>
-          </div>
-        </section>
-
-        <section className="satnav-bottom-panel">
-          <div>
-            <h3>Next steps</h3>
-            {followingSteps.map((step) => (
-              <p key={step.id}><strong>{formatDistance(step)}</strong> · {step.instruction}</p>
+          <div className="satnav-next-mini">
+            {followingSteps.slice(0, 2).map((step) => (
+              <p key={step.id}>
+                <strong>{formatDistance(step)}</strong> · {step.instruction}
+              </p>
             ))}
           </div>
-          <div>
-            <h3>Live road intel</h3>
-            <DriverIntel compact />
+
+          <div className="satnav-actions">
+            <button className="call" onClick={() => notify("Driver requested phone call from Control", "CALL_CONTROL")}>📞 Call Office</button>
+            <button className="breakdown" onClick={() => notify("HELP REQUEST - driver needs assistance", "HELP_REQUEST")}>🚨 Help</button>
           </div>
         </section>
       </main>
     );
   }
+
 
   const latestOfficeMessages = officeRequests.filter((item) => item.source === "office");
 
@@ -419,6 +428,7 @@ export default function DriverView({ selectedFleet }) {
         </div>
 
         <button type="button" onClick={addStop}>+ Add Stop</button>
+        {stops.length > 0 && <button type="button" className="secondary-route-button" onClick={() => setStops([])}>Clear Stops</button>}
 
         {stops.length > 0 && (
           <div className="route-stop-pills">
