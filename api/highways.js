@@ -137,6 +137,14 @@ export default async function handler(req, res) {
       }
     })
 
+    console.log(
+  JSON.stringify(
+    situations[0],
+    null,
+    2
+  )
+)
+
     return res.status(200).json({
       ok: true,
       count: alerts.length,
