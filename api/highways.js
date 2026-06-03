@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   try {
-    const key = process.env.VITE_HIGHWAYS_API_KEY
+    const key = process.env.NATIONAL_HIGHWAYS_API_KEY
 
     if (!key) {
       return res.status(500).json({ error: 'Missing National Highways API key' })
