@@ -834,3 +834,81 @@ body {
 .stop-tracking {
   background: #dc2626 !important;
 }
+
+/* Driver route setup */
+.driver-route-planner-card {
+  background: #f7f9fc;
+  color: #0b1220;
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: 1.2fr 1.5fr auto;
+  gap: 14px;
+  align-items: end;
+  border-left: 8px solid #1268ff;
+}
+
+.driver-route-planner-card h2,
+.driver-route-planner-card p {
+  margin: 0;
+}
+
+.driver-route-planner-card p {
+  color: #52657a;
+  margin-top: 4px;
+}
+
+.driver-route-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.driver-route-inputs label {
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.driver-route-inputs input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  font: inherit;
+}
+
+.driver-route-planner-card button {
+  border: 0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: #1268ff;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  min-width: 170px;
+}
+
+.route-status {
+  grid-column: 1 / -1;
+  font-weight: bold;
+  color: #334155 !important;
+}
+
+.route-status.strong {
+  color: #16a34a !important;
+}
+
+.planned-stop-marker {
+  border-color: #20d86b;
+}
+
+@media (max-width: 1100px) {
+  .driver-route-planner-card {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-route-inputs {
+    grid-template-columns: 1fr;
+  }
+}

@@ -5,6 +5,7 @@ import {
   Marker,
   Polyline,
   Popup,
+  useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -22,6 +23,24 @@ const closureIcon = L.divIcon({
   iconSize: [34, 34],
   iconAnchor: [17, 17],
 });
+
+const plannedStopIcon = L.divIcon({
+  className: "map-emoji-marker planned-stop-marker",
+  html: "📍",
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+});
+
+function FitMapToRoute({ positions }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!positions || positions.length < 2) return;
+    map.fitBounds(positions, { padding: [35, 35] });
+  }, [map, positions]);
+
+  return null;
+}
 
 const route = [
   {
@@ -70,6 +89,7 @@ export default function RouteMap({
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [coachStep, setCoachStep] = useState(0);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
+  const [plannedRoute, setPlannedRoute] = useState(null);
 
   const coachIcon = useMemo(
     () =>
@@ -133,7 +153,32 @@ export default function RouteMap({
       ? [trackedVehicle.lat, trackedVehicle.lng]
       : liveCoachTrack[coachStep];
 
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRoute = () => {
+      fetch(`/api/routes?vehicle=${encodeURIComponent(fleetNo)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) {
+            setPlannedRoute(data.route || null);
+          }
+        })
+        .catch((err) => console.error("Route fetch error:", err));
+    };
+
+    loadRoute();
+    const timer = window.setInterval(loadRoute, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [fleetNo]);
+
   const speed = mph(trackedVehicle?.speedMps);
+  const activeRouteLine = plannedRoute?.geometry?.length > 1 ? plannedRoute.geometry : routeLine;
 
   return (
     <MapContainer
@@ -146,8 +191,10 @@ export default function RouteMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
+      <FitMapToRoute positions={activeRouteLine} />
+
       <Polyline
-        positions={routeLine}
+        positions={activeRouteLine}
         pathOptions={{
           color: "#ffffff",
           weight: 10,
@@ -156,15 +203,15 @@ export default function RouteMap({
       />
 
       <Polyline
-        positions={routeLine}
+        positions={activeRouteLine}
         pathOptions={{
-          color: "#1268ff",
+          color: plannedRoute ? "#20d86b" : "#1268ff",
           weight: 6,
           opacity: 1,
         }}
       />
 
-      {route.map((stop) => (
+      {!plannedRoute && route.map((stop) => (
         <Marker key={stop.name} position={stop.position} icon={stopIcon}>
           <Popup>
             <strong>{stop.name}</strong>
@@ -173,6 +220,24 @@ export default function RouteMap({
           </Popup>
         </Marker>
       ))}
+
+      {plannedRoute?.start && (
+        <Marker position={[plannedRoute.start.lat, plannedRoute.start.lng]} icon={stopIcon}>
+          <Popup><strong>Start</strong><br />{plannedRoute.start.label}</Popup>
+        </Marker>
+      )}
+
+      {plannedRoute?.waypointPoint && (
+        <Marker position={[plannedRoute.waypointPoint.lat, plannedRoute.waypointPoint.lng]} icon={plannedStopIcon}>
+          <Popup><strong>Stop</strong><br />{plannedRoute.waypoint}</Popup>
+        </Marker>
+      )}
+
+      {plannedRoute?.end && (
+        <Marker position={[plannedRoute.end.lat, plannedRoute.end.lng]} icon={plannedStopIcon}>
+          <Popup><strong>Destination</strong><br />{plannedRoute.destination}</Popup>
+        </Marker>
+      )}
 
       <Marker position={coachPosition} icon={coachIcon}>
         <Popup>

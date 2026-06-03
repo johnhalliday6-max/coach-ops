@@ -22,6 +22,10 @@ export default function DriverView({ selectedFleet }) {
   const [tracking, setTracking] = useState(false);
   const [trackingError, setTrackingError] = useState("");
   const [lastPosition, setLastPosition] = useState(null);
+  const [destination, setDestination] = useState("London Victoria Coach Station");
+  const [waypoint, setWaypoint] = useState("Peterborough Services");
+  const [routeStatus, setRouteStatus] = useState("Set your route once GPS has a position");
+  const [routeSummary, setRouteSummary] = useState(null);
   const watchId = useRef(null);
 
   const notify = (text) => {
@@ -61,6 +65,65 @@ export default function DriverView({ selectedFleet }) {
     } catch (error) {
       console.error(error);
       setTrackingError("Could not send GPS to office");
+    }
+  };
+
+  const planRoute = async () => {
+    if (!lastPosition?.lat || !lastPosition?.lng) {
+      setRouteStatus("Start GPS tracking first so we can route from your current location");
+      return;
+    }
+
+    if (!destination.trim()) {
+      setRouteStatus("Enter a destination first");
+      return;
+    }
+
+    setRouteStatus("Building route...");
+
+    try {
+      const routeResponse = await fetch("/api/route", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          startLat: lastPosition.lat,
+          startLng: lastPosition.lng,
+          destination,
+          waypoint,
+        }),
+      });
+
+      const routeData = await routeResponse.json();
+
+      if (!routeData?.ok) {
+        setRouteStatus(routeData?.error || "Route build failed");
+        return;
+      }
+
+      const route = routeData.route;
+
+      await fetch("/api/routes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fleetNo: vehicle.fleetNo,
+          reg: vehicle.reg,
+          destination,
+          waypoint,
+          ...route,
+        }),
+      });
+
+      setRouteSummary(route);
+      setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
+      setLastAction(`Route shared with office for ${vehicle.fleetNo}`);
+    } catch (error) {
+      console.error(error);
+      setRouteStatus("Route planner failed");
     }
   };
 
@@ -155,7 +218,7 @@ export default function DriverView({ selectedFleet }) {
           <h1>Coach Ops Driver</h1>
           <p>
             {vehicle.fleetNo} · {vehicle.reg} · York → Peterborough Services →
-            London Victoria
+            {destination || "Destination"}
           </p>
         </div>
         <span>{tracking ? "GPS LIVE" : "LIVE TEST"}</span>
@@ -187,6 +250,38 @@ export default function DriverView({ selectedFleet }) {
         )}
       </section>
 
+      <section className="driver-route-planner-card">
+        <div>
+          <h2>Set Route</h2>
+          <p>Uses your phone GPS as the start point, then sends the route to the office map.</p>
+        </div>
+
+        <div className="driver-route-inputs">
+          <label>Destination</label>
+          <input
+            value={destination}
+            onChange={(event) => setDestination(event.target.value)}
+            placeholder="Example: Manchester Airport T2"
+          />
+
+          <label>Optional stop / services</label>
+          <input
+            value={waypoint}
+            onChange={(event) => setWaypoint(event.target.value)}
+            placeholder="Example: Peterborough Services"
+          />
+        </div>
+
+        <button onClick={planRoute}>🗺 Set Route On Map</button>
+
+        <p className="route-status">{routeStatus}</p>
+        {routeSummary && (
+          <p className="route-status strong">
+            Distance: {routeSummary.distanceMiles} miles · Drive time: {routeSummary.durationMinutes} mins
+          </p>
+        )}
+      </section>
+
       <section className="driver-only-grid">
         <aside className="driver-only-left">
           <article className="driver-card">
@@ -207,7 +302,7 @@ export default function DriverView({ selectedFleet }) {
               <strong>Next stop:</strong> Peterborough Services
             </p>
             <p>
-              <strong>Destination:</strong> London Victoria
+              <strong>Destination:</strong> {destination || "Not set"}
             </p>
           </article>
 
@@ -231,7 +326,7 @@ export default function DriverView({ selectedFleet }) {
             <div className="driver-progress-list">
               <div>✅ York</div>
               <div className="active-stop">🟡 Peterborough Services</div>
-              <div>⬜ London Victoria</div>
+              <div>⬜ {destination || "Destination"}</div>
             </div>
           </article>
         </aside>
