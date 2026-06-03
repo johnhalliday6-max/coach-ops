@@ -13,7 +13,7 @@ function App() {
   const [selectedFleet, setSelectedFleet] = useState(fleetData[0])
   const [search, setSearch] = useState('')
   const [activePage, setActivePage] = useState('dashboard')
-const [passengers, setPassengers] = useState(34)
+  const [passengers, setPassengers] = useState(34)
 
   const filteredFleet = fleetData.filter((vehicle) => {
     const text = `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.depot} ${vehicle.status}`.toLowerCase()
@@ -284,12 +284,25 @@ const [passengers, setPassengers] = useState(34)
         <button>Request Diversion</button>
       </div>
 
-            <div className="driver-actions">
-        <button className="call">📞 Call Control</button>
-        <button className="report">⚠️ Report Issue</button>
-        <button className="breakdown">🛠 Breakdown</button>
-        <button className="passengers">🚌 Route Update</button>
-      </div>
+            <button className="call" onClick={() => alert('Calling Control...')}>
+  📞 Call Control
+</button>
+
+<button className="report" onClick={() => alert('Issue reported to Control')}>
+  ⚠️ Report Issue
+</button>
+
+<button className="breakdown" onClick={() => alert('Breakdown alert sent to Control')}>
+  🛠 Breakdown
+</button>
+
+<button className="passengers" onClick={() => alert('Route update requested')}>
+  🚌 Route Update
+</button>
+
+<button className="passengers" onClick={() => alert('Route update requested')}>
+  🚌 Route Update
+</button>
 
   </section>
 )}
