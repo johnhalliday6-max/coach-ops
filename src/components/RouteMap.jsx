@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -22,6 +23,19 @@ const route = [
 const routeLine = route.map((stop) => stop.position)
 
 export default function RouteMap() {
+  const [highwaysAlerts, setHighwaysAlerts] = useState([])
+
+  useEffect(() => {
+    fetch('/api/highways')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.ok && Array.isArray(data.alerts)) {
+          setHighwaysAlerts(data.alerts.filter((alert) => alert.lat && alert.lng))
+        }
+      })
+      .catch((err) => console.error('Map highways error:', err))
+  }, [])
+
   return (
     <MapContainer
       center={[52.6, -0.6]}
@@ -47,6 +61,18 @@ export default function RouteMap() {
             <strong>{stop.name}</strong>
             <br />
             {stop.label}
+          </Popup>
+        </Marker>
+      ))}
+
+      {highwaysAlerts.map((alert) => (
+        <Marker key={`highways-${alert.id}`} position={[alert.lat, alert.lng]}>
+          <Popup>
+            <strong>{alert.road}</strong>
+            <br />
+            {alert.detail}
+            <br />
+            <small>{alert.source}</small>
           </Popup>
         </Marker>
       ))}
