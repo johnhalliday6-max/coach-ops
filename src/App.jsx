@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 import logo from "./assets/goahead-logo.png";
 import { fleetData } from "./data/fleetData";
@@ -18,6 +18,54 @@ function App() {
   const [activePage, setActivePage] = useState(
     isDriverOnly ? "driver" : "dashboard",
   );
+  const [officeRequests, setOfficeRequests] = useState([]);
+
+  useEffect(() => {
+    if (isDriverOnly) return undefined;
+
+    let cancelled = false;
+
+    const loadRequests = () => {
+      fetch("/api/requests")
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) {
+            setOfficeRequests((data.requests || []).slice(0, 6));
+          }
+        })
+        .catch((err) => console.error("Office requests fetch failed", err));
+    };
+
+    loadRequests();
+    const timer = window.setInterval(loadRequests, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isDriverOnly]);
+
+  const sendOfficeRoutePush = async () => {
+    try {
+      await fetch("/api/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fleetNo: selectedFleet.fleetNo,
+          reg: selectedFleet.reg,
+          operator: selectedFleet.operator,
+          depot: selectedFleet.depot,
+          type: "ROUTE_PUSH",
+          source: "office",
+          message: "Control has reviewed your route. Continue on the latest route shown on your map.",
+        }),
+      });
+      alert(`Route push sent to ${selectedFleet.fleetNo} / ${selectedFleet.reg}`);
+    } catch (error) {
+      console.error(error);
+      alert("Could not send route push");
+    }
+  };
 
   const filteredFleet = fleetData.filter((vehicle) => {
     const text =
@@ -132,6 +180,26 @@ function App() {
           <div>🔴 Incidents: {fleetStats.incidents}</div>
         </section>
 
+        {officeRequests.length > 0 && (
+          <section className="office-requests-panel">
+            <div className="office-requests-title">
+              <h3>Driver Requests / Messages</h3>
+              <span>Live from driver phones</span>
+            </div>
+
+            <div className="office-requests-grid">
+              {officeRequests.map((request) => (
+                <article className="office-request-card" key={request.id}>
+                  <strong>{request.fleetNo} · {request.reg}</strong>
+                  <span>{request.type}</span>
+                  <p>{request.message}</p>
+                  <small>{new Date(request.createdAt).toLocaleTimeString("en-GB")}</small>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
         {activePage === "dashboard" && (
           <>
             <section className="layout">
@@ -215,7 +283,7 @@ function App() {
                 <p>✅ Avoids weight limits</p>
                 <p>✅ Avoids restricted roads</p>
                 <p>✅ Vehicle safe for {selectedFleet.fleetNo}</p>
-                <button>Send To Driver</button>
+                <button onClick={sendOfficeRoutePush}>Push Route To Driver</button>
               </div>
             </section>
           </>

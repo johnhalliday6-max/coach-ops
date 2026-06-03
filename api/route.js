@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     coords.push([end.lng, end.lat])
 
     const coordText = coords.map((pair) => pair.join(',')).join(';')
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordText}?overview=full&geometries=geojson&steps=false`
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordText}?overview=full&geometries=geojson&steps=true`
 
     const routeResponse = await fetch(osrmUrl)
     const routeData = await routeResponse.json()
@@ -78,6 +78,40 @@ export default async function handler(req, res) {
     }
 
     const geometry = route.geometry.coordinates.map(([lng, lat]) => [lat, lng])
+
+    const instructions = (route.legs || [])
+      .flatMap((leg) => leg.steps || [])
+      .filter((step) => step && step.distance > 20)
+      .slice(0, 40)
+      .map((step, index) => {
+        const roadName = step.name || 'unnamed road'
+        const maneuver = step.maneuver || {}
+        const type = maneuver.type || 'continue'
+        const modifier = maneuver.modifier || ''
+        const distanceMiles = toMiles(step.distance)
+        const durationMinutes = toMinutes(step.duration)
+
+        let instruction = 'Continue'
+        if (type === 'depart') instruction = 'Start route'
+        else if (type === 'arrive') instruction = 'Arrive at destination'
+        else if (type === 'turn') instruction = `Turn ${modifier}`
+        else if (type === 'new name') instruction = 'Continue'
+        else if (type === 'merge') instruction = `Merge ${modifier}`
+        else if (type === 'on ramp') instruction = `Take ramp ${modifier}`
+        else if (type === 'off ramp') instruction = `Take exit/ramp ${modifier}`
+        else if (type === 'fork') instruction = `Keep ${modifier}`
+        else if (type === 'roundabout') instruction = 'At roundabout, take exit'
+
+        return {
+          id: index + 1,
+          instruction: `${instruction} onto ${roadName}`,
+          roadName,
+          distanceMiles,
+          durationMinutes,
+          type,
+          modifier,
+        }
+      })
 
     return res.status(200).json({
       ok: true,
@@ -90,6 +124,7 @@ export default async function handler(req, res) {
         geometry,
         distanceMiles: toMiles(route.distance),
         durationMinutes: toMinutes(route.duration),
+        instructions,
       },
     })
   } catch (error) {
