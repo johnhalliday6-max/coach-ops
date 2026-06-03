@@ -6,6 +6,8 @@ import { coachParking } from './data/coachParking'
 import { serviceAreas } from './data/serviceAreas'
 import { depots } from './data/depots'
 import { highwaysTestAlerts } from './data/highwaysTestAlerts'
+import RouteMap from './components/RouteMap'
+import HighwaysLive from './components/HighwaysLive'
 
 function App() {
   const [selectedFleet, setSelectedFleet] = useState(fleetData[0])
@@ -39,6 +41,7 @@ function App() {
         </div>
 
         <div className={activePage === 'dashboard' ? 'nav active' : 'nav'} onClick={() => setActivePage('dashboard')}>Live Map</div>
+        <div className={activePage === 'driver' ? 'nav active' : 'nav'} onClick={() => setActivePage('driver')}>Driver Mode</div>
         <div className={activePage === 'fleet' ? 'nav active' : 'nav'} onClick={() => setActivePage('fleet')}>Fleet</div>
         <div className={activePage === 'depots' ? 'nav active' : 'nav'} onClick={() => setActivePage('depots')}>Depots</div>
         <div className={activePage === 'routes' ? 'nav active' : 'nav'} onClick={() => setActivePage('routes')}>Routes</div>
@@ -103,13 +106,10 @@ function App() {
                 </div>
               </div>
 
-              <div className="map-panel fake-map">
-                <div className="map-label start">Start<br />York</div>
-                <div className="route-line"></div>
-                <div className="map-label mid">Peterborough<br />Services</div>
-                <div className="map-label end">End<br />London Victoria</div>
-                <div className="avoid-area">Avoid Area</div>
-              </div>
+             <div className="map-panel">
+  <RouteMap />
+</div>
+
 
               <div className="tools-panel">
                 <h3>Route Tools</h3>
@@ -127,25 +127,7 @@ function App() {
               </div>
             </section>
 
-            <section className="highways-panel">
-  <h2>National Highways Live</h2>
-
-  <div className="highways-grid">
-    {highwaysTestAlerts.map((alert) => (
-      <div className="highways-card" key={alert.id}>
-        <div className="highways-top">
-          <strong>{alert.road}</strong>
-          <span>{alert.speed}</span>
-        </div>
-
-        <h3>{alert.location}</h3>
-        <p><strong>{alert.type}</strong></p>
-        <p>{alert.detail}</p>
-        <small>{alert.source} · {alert.severity}</small>
-      </div>
-    ))}
-  </div>
-</section>
+          <HighwaysLive />
 
             <section className="bottom-grid">
               <div className="card incident">
@@ -255,11 +237,19 @@ function App() {
           </section>
         )}
 
+        {activePage === 'driver' && (
+  <section className="page">
+    <h2>Driver App Preview</h2>
+    <p>Driver screen coming next...</p>
+  </section>
+)}
+
         {activePage !== 'dashboard' &&
-          activePage !== 'fleet' &&
-          activePage !== 'depots' &&
-          activePage !== 'parking' &&
-          activePage !== 'services' && (
+        activePage !== 'driver' &&
+        activePage !== 'fleet' &&
+        activePage !== 'depots' &&
+        activePage !== 'parking' &&
+        activePage !== 'services' && (
             <section className="page">
               <h2>{activePage.toUpperCase()}</h2>
               <p>This page is ready to build next.</p>
