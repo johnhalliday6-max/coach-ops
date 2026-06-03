@@ -1,5 +1,68 @@
 import { XMLParser } from 'fast-xml-parser'
 
+function asArray(value) {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
+}
+
+function findFirst(obj, names) {
+  if (!obj || typeof obj !== 'object') return null
+
+  for (const name of names) {
+    if (obj[name]) return obj[name]
+  }
+
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === 'object') {
+      const found = findFirst(value, names)
+      if (found) return found
+    }
+  }
+
+  return null
+}
+
+function textValue(value) {
+  if (!value) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return String(value)
+  if (value.value) return textValue(value.value)
+  if (value.values) return textValue(value.values)
+  if (value.comment) return textValue(value.comment)
+  if (Array.isArray(value)) return textValue(value[0])
+  return null
+}
+
+function findUsefulComment(obj) {
+  const possible = findFirst(obj, [
+    'generalPublicComment',
+    'comment',
+    'description',
+    'locationDescriptor',
+    'supplementaryPositionalDescription',
+    'eventDescription',
+  ])
+
+  const text = textValue(possible)
+
+  if (text && text.length > 5) return text
+
+  return 'Live road and lane closure from National Highways'
+}
+
+function findRoadFromText(text) {
+  if (!text) return null
+
+  const match = text.match(/\b(M\d+|A\d+\(M\)|A\d+|A1\(M\))\b/i)
+  return match ? match[0].toUpperCase() : null
+}
+
+function clean(value, fallback) {
+  const text = textValue(value)
+  if (!text) return fallback
+  return String(text).replace(/\s+/g, ' ').trim()
+}
+
 export default async function handler(req, res) {
   try {
     const key = process.env.NATIONAL_HIGHWAYS_API_KEY
@@ -23,26 +86,54 @@ export default async function handler(req, res) {
     const parser = new XMLParser({
       ignoreAttributes: false,
       attributeNamePrefix: '',
+      removeNSPrefix: true,
     })
 
     const data = parser.parse(xml)
 
-    const situations = data?.D2Payload?.situation || []
+    const situations = asArray(data?.D2Payload?.situation)
 
-    const list = Array.isArray(situations) ? situations : [situations]
+    const alerts = situations.slice(0, 12).map((situation, index) => {
+      const recordRaw = situation?.situationRecord || {}
+      const record =
+        recordRaw?.sitRoadOrCarriagewayOrLaneManagement ||
+        recordRaw?.roadOrCarriagewayOrLaneManagement ||
+        recordRaw
 
-    const alerts = list.slice(0, 12).map((item, index) => {
-      const record = item?.situationRecord?.sitRoadOrCarriagewayOrLaneManagement || item?.situationRecord || {}
+      const detail = clean(findUsefulComment(record), 'Live road and lane closure from National Highways')
+
+      const road =
+        clean(findFirst(record, ['roadName', 'roadNumber', 'roadIdentifier', 'road']), null) ||
+        findRoadFromText(detail) ||
+        'National Highways'
+
+      const location =
+        clean(findFirst(record, [
+          'locationDescriptor',
+          'descriptor',
+          'supplementaryPositionalDescription',
+          'areaName',
+          'namedArea',
+        ]), null) ||
+        clean(record?.idG, 'Road closure')
+
+      const startTime =
+        clean(findFirst(record, ['overallStartTime', 'situationRecordCreationTime']), null)
+
+      const endTime =
+        clean(findFirst(record, ['overallEndTime']), null)
 
       return {
         id: index + 1,
-        road: record?.roadName || record?.roadNumber || 'National Highways',
-        location: record?.locationDescriptor || record?.idG || 'Road closure',
+        road,
+        location,
         type: 'Road / Lane Closure',
-        detail: record?.generalPublicComment?.comment?.value || 'Live closure record from National Highways',
+        detail,
         speed: 'Live',
         source: 'National Highways',
-        severity: record?.severity || 'Live',
+        severity: clean(findFirst(record, ['severity']), 'Live'),
+        startTime,
+        endTime,
       }
     })
 
