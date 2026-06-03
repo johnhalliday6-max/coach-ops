@@ -13,6 +13,7 @@ function App() {
   const [selectedFleet, setSelectedFleet] = useState(fleetData[0])
   const [search, setSearch] = useState('')
   const [activePage, setActivePage] = useState('dashboard')
+const [passengers, setPassengers] = useState(34)
 
   const filteredFleet = fleetData.filter((vehicle) => {
     const text = `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.depot} ${vehicle.status}`.toLowerCase()
@@ -239,23 +240,7 @@ function App() {
 
        {activePage === 'driver' && (
   <section className="driver-page">
-    <div className="driver-layout">
-
-  <div className="driver-left">
-    Journey
-    Passenger Count
-    Next Stop
-  </div>
-
-  <div className="driver-centre">
-    <RouteMap />
-  </div>
-
-  <div className="driver-right">
-    Actions
-  </div>
-
-</div>
+    
 
       <div className="driver-header">
         <div>
@@ -274,11 +259,15 @@ function App() {
 
       <div className="driver-card">
         <h3>Passenger Count</h3>
-        <p className="big">34 On Board</p>
+        <p className="big">{passengers} On Board</p>
 
         <div className="driver-actions">
-          <button>➖ Passenger Left</button>
-          <button>➕ Passenger Boarded</button>
+          <button onClick={() => setPassengers(Math.max(0, passengers - 1))}>
+  ➖ Passenger Left
+</button>
+          <button onClick={() => setPassengers(passengers + 1)}>
+  ➕ Passenger Boarded
+</button>
         </div>
       </div>
 
@@ -295,14 +284,13 @@ function App() {
         <button>Request Diversion</button>
       </div>
 
-      <div className="driver-actions">
+            <div className="driver-actions">
         <button className="call">📞 Call Control</button>
         <button className="report">⚠️ Report Issue</button>
         <button className="breakdown">🛠 Breakdown</button>
         <button className="passengers">🚌 Route Update</button>
       </div>
 
-    </div>
   </section>
 )}
 
