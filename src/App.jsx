@@ -19,10 +19,6 @@ function App() {
     isDriverOnly ? "driver" : "dashboard",
   );
   const [officeRequests, setOfficeRequests] = useState([]);
-  const [officeDestination, setOfficeDestination] = useState("London Victoria Coach Station");
-  const [officeStop, setOfficeStop] = useState("Peterborough Services");
-  const [officeStops, setOfficeStops] = useState(["Peterborough Services"]);
-  const [officeRouteStatus, setOfficeRouteStatus] = useState("No office route pushed yet");
 
   useEffect(() => {
     if (isDriverOnly) return undefined;
@@ -49,54 +45,8 @@ function App() {
     };
   }, [isDriverOnly]);
 
-  const addOfficeStop = () => {
-    const stop = officeStop.trim();
-    if (!stop) return;
-    if (!officeStops.includes(stop)) setOfficeStops((current) => [...current, stop]);
-    setOfficeStop("");
-  };
-
   const sendOfficeRoutePush = async () => {
     try {
-      setOfficeRouteStatus("Building route for driver...");
-
-      const routeResponse = await fetch("/api/route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          // Whitby depot as office-side start point for tonight. Driver GPS route can overwrite this live.
-          startLat: 54.486,
-          startLng: -0.613,
-          destination: officeDestination,
-          stops: officeStops,
-        }),
-      });
-
-      const routeData = await routeResponse.json();
-      if (!routeData?.ok) {
-        setOfficeRouteStatus(routeData?.error || "Could not build office route");
-        return;
-      }
-
-      const route = routeData.route;
-
-      await fetch("/api/routes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fleetNo: selectedFleet.fleetNo,
-          reg: selectedFleet.reg,
-          operator: selectedFleet.operator,
-          depot: selectedFleet.depot,
-          source: "office",
-          status: "pending",
-          message: `Control pushed a new route to ${officeDestination}`,
-          destination: officeDestination,
-          stops: officeStops,
-          ...route,
-        }),
-      });
-
       await fetch("/api/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,16 +57,29 @@ function App() {
           depot: selectedFleet.depot,
           type: "ROUTE_PUSH",
           source: "office",
-          message: `New route pushed: ${officeStops.length ? `${officeStops.join(" → ")} → ` : ""}${officeDestination}`,
+          message: "Control has reviewed your route. Continue on the latest route shown on your map.",
         }),
       });
-
-      setOfficeRouteStatus(`Route pushed to ${selectedFleet.fleetNo}: ${route.distanceMiles} miles · ${route.durationMinutes} mins`);
       alert(`Route push sent to ${selectedFleet.fleetNo} / ${selectedFleet.reg}`);
     } catch (error) {
       console.error(error);
-      setOfficeRouteStatus("Could not send route push");
       alert("Could not send route push");
+    }
+  };
+
+
+
+  const closeOfficeRequest = async (id) => {
+    try {
+      await fetch("/api/requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "closed" }),
+      });
+      setOfficeRequests((current) => current.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error(error);
+      alert("Could not close request");
     }
   };
 
@@ -247,6 +210,7 @@ function App() {
                   <span>{request.type}</span>
                   <p>{request.message}</p>
                   <small>{new Date(request.createdAt).toLocaleTimeString("en-GB")}</small>
+                  <button className="office-close-request" onClick={() => closeOfficeRequest(request.id)}>Dealt with</button>
                 </article>
               ))}
             </div>
@@ -294,34 +258,13 @@ function App() {
                 <RouteMap fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} />
               </div>
 
-              <div className="tools-panel office-route-tools">
+              <div className="tools-panel">
                 <h3>Route Tools</h3>
-                <label>Destination</label>
-                <input
-                  value={officeDestination}
-                  onChange={(event) => setOfficeDestination(event.target.value)}
-                  placeholder="London Victoria Coach Station"
-                />
-
-                <label>Add stop / services</label>
-                <div className="office-stop-row">
-                  <input
-                    value={officeStop}
-                    onChange={(event) => setOfficeStop(event.target.value)}
-                    placeholder="Peterborough Services"
-                  />
-                  <button onClick={addOfficeStop}>Add</button>
-                </div>
-
-                <div className="office-stop-list">
-                  {officeStops.map((stop) => (
-                    <span key={stop}>{stop}<button onClick={() => setOfficeStops((current) => current.filter((item) => item !== stop))}>×</button></span>
-                  ))}
-                </div>
-
-                <button onClick={sendOfficeRoutePush}>📡 Push Route To Driver</button>
-                <button onClick={() => setOfficeStops([])}>🗑 Clear Stops</button>
-                <small>{officeRouteStatus}</small>
+                <button>📍 Add Waypoint</button>
+                <button>🚫 Draw Avoid Area</button>
+                <button>✏️ Edit Waypoint</button>
+                <button>↕ Reorder</button>
+                <button>🗑 Remove</button>
 
                 <h3>Vehicle Check</h3>
                 <p>✅ Height {selectedFleet.height}</p>

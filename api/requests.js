@@ -34,11 +34,40 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, request })
     }
 
+    if (req.method === 'PATCH') {
+      const body = req.body || {}
+      const id = String(body.id || '').trim()
+      const status = String(body.status || 'closed').trim()
+      const item = store.find((request) => request.id === id)
+
+      if (!item) {
+        return res.status(404).json({ ok: false, error: 'Request not found' })
+      }
+
+      item.status = status
+      item.closedAt = new Date().toISOString()
+      return res.status(200).json({ ok: true, request: item })
+    }
+
+    if (req.method === 'DELETE') {
+      const id = String(req.query?.id || '').trim()
+      if (!id) {
+        store.length = 0
+        return res.status(200).json({ ok: true, cleared: true })
+      }
+
+      const index = store.findIndex((request) => request.id === id)
+      if (index >= 0) store.splice(index, 1)
+      return res.status(200).json({ ok: true, deleted: id })
+    }
+
     if (req.method === 'GET') {
       const vehicleId = cleanVehicleId(req.query?.vehicle)
-      const requests = vehicleId
+      const includeClosed = String(req.query?.includeClosed || '') === 'true'
+      const requests = (vehicleId
         ? store.filter((item) => cleanVehicleId(item.fleetNo) === vehicleId)
         : store
+      ).filter((item) => includeClosed || item.status !== 'closed')
 
       return res.status(200).json({ ok: true, requests })
     }

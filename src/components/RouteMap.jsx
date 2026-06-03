@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -31,63 +31,47 @@ const plannedStopIcon = L.divIcon({
   iconAnchor: [17, 17],
 });
 
-function FitMapToRoute({ positions }) {
+function FitMapToRoute({ routeId, positions, enabled }) {
   const map = useMap();
+  const lastRouteId = useRef(null);
 
   useEffect(() => {
-    if (!positions || positions.length < 2) return;
+    if (!enabled || !positions || positions.length < 2) return;
+    if (lastRouteId.current === routeId) return;
+    lastRouteId.current = routeId;
     map.fitBounds(positions, { padding: [35, 35] });
-  }, [map, positions]);
+  }, [enabled, map, positions, routeId]);
 
   return null;
 }
 
-const route = [
-  {
-    name: "Start",
-    label: "York",
-    position: [53.959, -1.081],
-  },
-  {
-    name: "Service Stop",
-    label: "Peterborough Services",
-    position: [52.574, -0.242],
-  },
-  {
-    name: "Destination",
-    label: "London Victoria",
-    position: [51.507, -0.128],
-  },
-];
+function FollowCoach({ position, enabled, zoom = 16 }) {
+  const map = useMap();
 
-const routeLine = route.map((stop) => stop.position);
+  useEffect(() => {
+    if (!enabled || !position) return;
+    map.setView(position, Math.max(map.getZoom(), zoom), { animate: true });
+  }, [enabled, map, position, zoom]);
 
-const liveCoachTrack = [
-  [53.959, -1.081],
-  [53.705, -1.115],
-  [53.52, -1.10],
-  [53.23, -0.98],
-  [52.92, -0.73],
-  [52.574, -0.242],
-  [52.28, -0.13],
-  [51.96, -0.12],
-  [51.72, -0.14],
-  [51.507, -0.128],
-];
+  return null;
+}
 
 function mph(speedMps) {
   if (speedMps == null || Number.isNaN(Number(speedMps))) return null;
-  return Math.round(Number(speedMps) * 2.23694);
+  return Math.max(0, Math.round(Number(speedMps) * 2.23694));
 }
 
 export default function RouteMap({
   height = "700px",
   fleetNo = "23031",
   reg = "YJ72 CGG",
-  liveTracking = true,
+  liveTracking = false,
+  followCoach = false,
+  navigationMode = false,
+  showDefaultRoute = false,
+  fitRoute = true,
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
-  const [coachStep, setCoachStep] = useState(0);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
 
@@ -107,23 +91,11 @@ export default function RouteMap({
       .then((res) => res.json())
       .then((data) => {
         if (data?.ok && Array.isArray(data.alerts)) {
-          setHighwaysAlerts(
-            data.alerts.filter((alert) => alert.lat && alert.lng),
-          );
+          setHighwaysAlerts(data.alerts.filter((alert) => alert.lat && alert.lng));
         }
       })
       .catch((err) => console.error("Map highways error:", err));
   }, []);
-
-  useEffect(() => {
-    if (!liveTracking) return undefined;
-
-    const timer = window.setInterval(() => {
-      setCoachStep((current) => (current + 1) % liveCoachTrack.length);
-    }, 7000);
-
-    return () => window.clearInterval(timer);
-  }, [liveTracking]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,19 +112,13 @@ export default function RouteMap({
     };
 
     loadTracking();
-    const timer = window.setInterval(loadTracking, 5000);
+    const timer = window.setInterval(loadTracking, liveTracking ? 2500 : 5000);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [fleetNo]);
-
-  const coachPosition =
-    trackedVehicle?.lat && trackedVehicle?.lng
-      ? [trackedVehicle.lat, trackedVehicle.lng]
-      : liveCoachTrack[coachStep];
-
+  }, [fleetNo, liveTracking]);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,50 +143,52 @@ export default function RouteMap({
     };
   }, [fleetNo]);
 
+  const coachPosition =
+    trackedVehicle?.lat && trackedVehicle?.lng
+      ? [trackedVehicle.lat, trackedVehicle.lng]
+      : plannedRoute?.start
+        ? [plannedRoute.start.lat, plannedRoute.start.lng]
+        : [54.4863, -0.6133];
+
   const speed = mph(trackedVehicle?.speedMps);
-  const activeRouteLine = plannedRoute?.geometry?.length > 1 ? plannedRoute.geometry : routeLine;
-  const plannedStops = Array.isArray(plannedRoute?.stopPoints) ? plannedRoute.stopPoints : [];
+  const activeRouteLine = plannedRoute?.geometry?.length > 1 ? plannedRoute.geometry : [];
+  const routeId = plannedRoute?.updatedAt || `${activeRouteLine.length}-${plannedRoute?.destination || "none"}`;
+  const shouldShowRoute = activeRouteLine.length > 1;
+  void showDefaultRoute;
+  const center = navigationMode || followCoach ? coachPosition : coachPosition || [52.6, -0.6];
 
   return (
     <MapContainer
-      center={coachPosition || [52.6, -0.6]}
-      zoom={7}
+      center={center}
+      zoom={navigationMode || followCoach ? 15 : 7}
       style={{ height, width: "100%" }}
+      zoomControl={!navigationMode}
     >
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <FitMapToRoute positions={activeRouteLine} />
-
-      <Polyline
+      <FitMapToRoute
         positions={activeRouteLine}
-        pathOptions={{
-          color: "#ffffff",
-          weight: 10,
-          opacity: 0.95,
-        }}
+        routeId={routeId}
+        enabled={fitRoute && !followCoach && !navigationMode}
       />
+      <FollowCoach position={coachPosition} enabled={followCoach || navigationMode} zoom={navigationMode ? 16 : 15} />
 
-      <Polyline
-        positions={activeRouteLine}
-        pathOptions={{
-          color: plannedRoute ? "#20d86b" : "#1268ff",
-          weight: 6,
-          opacity: 1,
-        }}
-      />
+      {shouldShowRoute && (
+        <>
+          <Polyline
+            positions={activeRouteLine}
+            pathOptions={{ color: "#ffffff", weight: 10, opacity: 0.95 }}
+          />
+          <Polyline
+            positions={activeRouteLine}
+            pathOptions={{ color: "#20d86b", weight: 6, opacity: 1 }}
+          />
+        </>
+      )}
 
-      {!plannedRoute && route.map((stop) => (
-        <Marker key={stop.name} position={stop.position} icon={stopIcon}>
-          <Popup>
-            <strong>{stop.name}</strong>
-            <br />
-            {stop.label}
-          </Popup>
-        </Marker>
-      ))}
 
       {plannedRoute?.start && (
         <Marker position={[plannedRoute.start.lat, plannedRoute.start.lng]} icon={stopIcon}>
@@ -228,19 +196,17 @@ export default function RouteMap({
         </Marker>
       )}
 
-      {plannedStops.length > 0 && plannedStops.map((stop, index) => (
-        <Marker
-          key={`planned-stop-${index}`}
-          position={[stop.lat, stop.lng]}
-          icon={plannedStopIcon}
-        >
-          <Popup>
-            <strong>Stop {index + 1}</strong>
-            <br />
-            {plannedRoute.stops?.[index] || stop.label}
-          </Popup>
+      {plannedRoute?.waypoints?.map((stop, index) => (
+        <Marker key={`${stop.label}-${index}`} position={[stop.lat, stop.lng]} icon={plannedStopIcon}>
+          <Popup><strong>Stop {index + 1}</strong><br />{stop.label}</Popup>
         </Marker>
       ))}
+
+      {plannedRoute?.waypointPoint && !plannedRoute?.waypoints?.length && (
+        <Marker position={[plannedRoute.waypointPoint.lat, plannedRoute.waypointPoint.lng]} icon={plannedStopIcon}>
+          <Popup><strong>Stop</strong><br />{plannedRoute.waypoint}</Popup>
+        </Marker>
+      )}
 
       {plannedRoute?.end && (
         <Marker position={[plannedRoute.end.lat, plannedRoute.end.lng]} icon={plannedStopIcon}>
@@ -250,37 +216,19 @@ export default function RouteMap({
 
       <Marker position={coachPosition} icon={coachIcon}>
         <Popup>
-          <strong>{fleetNo}</strong>
-          <br />
-          Reg: {trackedVehicle?.reg || reg}
-          <br />
-          {trackedVehicle ? "Live phone GPS" : "Simulated live tracking"}
-          {speed != null && (
-            <>
-              <br />
-              Speed: {speed} mph
-            </>
-          )}
-          {trackedVehicle?.accuracy && (
-            <>
-              <br />
-              Accuracy: ±{Math.round(trackedVehicle.accuracy)}m
-            </>
-          )}
+          <strong>{fleetNo}</strong><br />
+          Reg: {trackedVehicle?.reg || reg}<br />
+          {trackedVehicle ? "Live phone GPS" : "Waiting for live GPS"}
+          {speed != null && (<><br />Current speed: {speed} mph</>)}
+          {trackedVehicle?.accuracy && (<><br />Accuracy: ±{Math.round(trackedVehicle.accuracy)}m</>)}
         </Popup>
       </Marker>
 
       {highwaysAlerts.map((alert) => (
-        <Marker
-          key={`highways-${alert.id}`}
-          position={[alert.lat, alert.lng]}
-          icon={closureIcon}
-        >
+        <Marker key={`highways-${alert.id}`} position={[alert.lat, alert.lng]} icon={closureIcon}>
           <Popup>
-            <strong>{alert.road}</strong>
-            <br />
-            {alert.detail}
-            <br />
+            <strong>{alert.road}</strong><br />
+            {alert.detail}<br />
             <small>{alert.source}</small>
           </Popup>
         </Marker>
