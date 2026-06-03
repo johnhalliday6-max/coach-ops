@@ -307,3 +307,10 @@ body {
 .highways-card small {
   color: #9fb3c8;
 }
+
+.highways-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}

@@ -33,17 +33,19 @@ export default function HighwaysLive() {
       <div className="highways-grid">
         {alerts.map((alert) => (
           <div className="highways-card" key={alert.id}>
-            <div className="highways-top">
-              <strong>{alert.road}</strong>
-              <span>{alert.speed}</span>
-            </div>
+          <div className="highways-top">
+  <strong>{alert.road}</strong>
+  <span>{alert.speed}</span>
+</div>
 
-            <h3>{alert.road}</h3>
+<h3>{alert.detail}</h3>
 <p><strong>{alert.type}</strong></p>
-<p>{alert.detail}</p>
-{alert.endTime && <small>Ends: {new Date(alert.endTime).toLocaleString()}</small>}
-            <small>{alert.source} · {alert.severity}</small>
-          </div>
+
+<div className="highways-meta">
+  {alert.endTime && <small>Ends: {new Date(alert.endTime).toLocaleString()}</small>}
+  <small>{alert.source} · {alert.severity}</small>
+</div>
+</div>
         ))}
       </div>
     </section>

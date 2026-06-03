@@ -108,14 +108,13 @@ export default async function handler(req, res) {
         'National Highways'
 
       const location =
-        clean(findFirst(record, [
-          'locationDescriptor',
-          'descriptor',
-          'supplementaryPositionalDescription',
-          'areaName',
-          'namedArea',
-        ]), null) ||
-        clean(record?.idG, 'Road closure')
+  clean(findFirst(record, [
+    'locationDescriptor',
+    'descriptor',
+    'supplementaryPositionalDescription',
+    'areaName',
+    'namedArea',
+  ]), 'Road closure')
 
       const startTime =
         clean(findFirst(record, ['overallStartTime', 'situationRecordCreationTime']), null)
