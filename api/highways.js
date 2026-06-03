@@ -122,19 +122,39 @@ export default async function handler(req, res) {
       const endTime =
         clean(findFirst(record, ['overallEndTime']), null)
 
-      return {
-        id: index + 1,
-        road,
-        location,
-        type: 'Road / Lane Closure',
-        detail,
-        speed: 'Live',
-        source: 'National Highways',
-        severity: clean(findFirst(record, ['severity']), 'Live'),
-        startTime,
-        endTime,
-      }
-    })
+  const posList =
+  record?.locationReference
+    ?.locLocationGroupByList
+    ?.locationContainedInGroup?.[0]
+    ?.locLinearLocation
+    ?.gmlLineString
+    ?.locGmlLineString
+    ?.posList
+
+let lat = null
+let lng = null
+
+if (posList) {
+  const coords = posList.trim().split(/\s+/)
+
+  lat = Number(coords[0])
+  lng = Number(coords[1])
+}
+
+return {
+    id: index + 1,
+    road,
+    location,
+    type: 'Road / Lane Closure',
+    detail,
+    speed: 'Live',
+    source: 'National Highways',
+    severity: clean(findFirst(record, ['severity']), 'Live'),
+    startTime,
+    endTime,
+    lat,
+    lng,
+}
 
     console.log(
   JSON.stringify(
