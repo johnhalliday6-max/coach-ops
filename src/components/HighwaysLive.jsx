@@ -38,9 +38,10 @@ export default function HighwaysLive() {
               <span>{alert.speed}</span>
             </div>
 
-            <h3>{alert.location}</h3>
-            <p><strong>{alert.type}</strong></p>
-            <p>{alert.detail}</p>
+            <h3>{alert.road}</h3>
+<p><strong>{alert.type}</strong></p>
+<p>{alert.detail}</p>
+{alert.endTime && <small>Ends: {new Date(alert.endTime).toLocaleString()}</small>}
             <small>{alert.source} · {alert.severity}</small>
           </div>
         ))}
