@@ -179,6 +179,7 @@ export default function RouteMap({
 
   const speed = mph(trackedVehicle?.speedMps);
   const activeRouteLine = plannedRoute?.geometry?.length > 1 ? plannedRoute.geometry : routeLine;
+  const plannedStops = Array.isArray(plannedRoute?.stopPoints) ? plannedRoute.stopPoints : [];
 
   return (
     <MapContainer
@@ -227,11 +228,19 @@ export default function RouteMap({
         </Marker>
       )}
 
-      {plannedRoute?.waypointPoint && (
-        <Marker position={[plannedRoute.waypointPoint.lat, plannedRoute.waypointPoint.lng]} icon={plannedStopIcon}>
-          <Popup><strong>Stop</strong><br />{plannedRoute.waypoint}</Popup>
+      {plannedStops.length > 0 && plannedStops.map((stop, index) => (
+        <Marker
+          key={`planned-stop-${index}`}
+          position={[stop.lat, stop.lng]}
+          icon={plannedStopIcon}
+        >
+          <Popup>
+            <strong>Stop {index + 1}</strong>
+            <br />
+            {plannedRoute.stops?.[index] || stop.label}
+          </Popup>
         </Marker>
-      )}
+      ))}
 
       {plannedRoute?.end && (
         <Marker position={[plannedRoute.end.lat, plannedRoute.end.lng]} icon={plannedStopIcon}>
