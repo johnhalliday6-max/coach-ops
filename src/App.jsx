@@ -5,6 +5,7 @@ import { fleetData } from './data/fleetData'
 import { coachParking } from './data/coachParking'
 import { serviceAreas } from './data/serviceAreas'
 import { depots } from './data/depots'
+import { highwaysTestAlerts } from './data/highwaysTestAlerts'
 
 function App() {
   const [selectedFleet, setSelectedFleet] = useState(fleetData[0])
@@ -125,6 +126,26 @@ function App() {
                 <p>✅ Weight {selectedFleet.weight}</p>
               </div>
             </section>
+
+            <section className="highways-panel">
+  <h2>National Highways Live</h2>
+
+  <div className="highways-grid">
+    {highwaysTestAlerts.map((alert) => (
+      <div className="highways-card" key={alert.id}>
+        <div className="highways-top">
+          <strong>{alert.road}</strong>
+          <span>{alert.speed}</span>
+        </div>
+
+        <h3>{alert.location}</h3>
+        <p><strong>{alert.type}</strong></p>
+        <p>{alert.detail}</p>
+        <small>{alert.source} · {alert.severity}</small>
+      </div>
+    ))}
+  </div>
+</section>
 
             <section className="bottom-grid">
               <div className="card incident">

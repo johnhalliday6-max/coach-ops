@@ -254,3 +254,56 @@ body {
   border-radius: 14px;
   padding: 18px;
 }
+
+.highways-panel {
+  background: #07111f;
+  border: 1px solid #21344f;
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 14px;
+  color: white;
+}
+
+.highways-panel h2 {
+  margin: 0 0 14px;
+}
+
+.highways-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.highways-card {
+  background: #12243b;
+  border: 1px solid #2d4666;
+  border-left: 6px solid #ffb020;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.highways-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.highways-top span {
+  background: #ff3b3b;
+  color: white;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: bold;
+}
+
+.highways-card h3 {
+  margin: 10px 0;
+}
+
+.highways-card p {
+  margin: 5px 0;
+}
+
+.highways-card small {
+  color: #9fb3c8;
+}

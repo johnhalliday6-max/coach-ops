@@ -1,0 +1,32 @@
+export const highwaysTestAlerts = [
+  {
+    id: 1,
+    road: 'M62',
+    location: 'J24 - J25',
+    type: 'RTC',
+    detail: 'Lane closure and temporary speed restriction',
+    speed: '40mph',
+    source: 'National Highways',
+    severity: 'High',
+  },
+  {
+    id: 2,
+    road: 'A1(M)',
+    location: 'J52',
+    type: 'Roadworks',
+    detail: 'Roadworks with possible delays',
+    speed: '50mph',
+    source: 'National Highways',
+    severity: 'Medium',
+  },
+  {
+    id: 3,
+    road: 'M60',
+    location: 'J18',
+    type: 'Congestion',
+    detail: 'Heavy traffic towards Manchester Airport',
+    speed: 'Variable',
+    source: 'National Highways',
+    severity: 'Medium',
+  },
+]
