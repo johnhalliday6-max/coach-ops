@@ -314,3 +314,96 @@ body {
   gap: 4px;
   margin-top: 8px;
 }
+
+.driver-page {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.driver-phone {
+  width: 420px;
+  max-width: 100%;
+  background: #06101d;
+  border-radius: 28px;
+  padding: 18px;
+  color: white;
+}
+
+.driver-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.driver-header h2,
+.driver-header p {
+  margin: 0;
+}
+
+.driver-header span {
+  background: #20d86b;
+  color: #06101d;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: bold;
+}
+
+.driver-card {
+  background: #f7f9fc;
+  color: #0b1220;
+  border-radius: 18px;
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.driver-card h3 {
+  margin-top: 0;
+}
+
+.driver-card .big {
+  font-size: 22px;
+  font-weight: bold;
+}
+
+.driver-card.warning {
+  border-left: 7px solid #ffb020;
+}
+
+.driver-card button,
+.driver-actions button {
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 12px;
+  color: white;
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+.driver-card button {
+  background: #1268ff;
+}
+
+.driver-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.call {
+  background: #16a34a;
+}
+
+.report {
+  background: #f59e0b;
+}
+
+.breakdown {
+  background: #dc2626;
+}
+
+.passengers {
+  background: #1268ff;
+}

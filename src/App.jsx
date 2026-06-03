@@ -237,19 +237,65 @@ function App() {
           </section>
         )}
 
-        {activePage === 'driver' && (
-  <section className="page">
-    <h2>Driver App Preview</h2>
-    <p>Driver screen coming next...</p>
+       {activePage === 'driver' && (
+  <section className="driver-page">
+    <div className="driver-phone">
+
+      <div className="driver-header">
+        <div>
+          <h2>Driver Mode</h2>
+          <p>{selectedFleet.fleetNo} · York → London Victoria</p>
+        </div>
+        <span>LIVE</span>
+      </div>
+
+      <div className="driver-card">
+        <h3>Journey</h3>
+        <p><strong>Booking:</strong> P12440/20519</p>
+        <p><strong>Vehicle:</strong> {selectedFleet.fleetNo}</p>
+        <p><strong>Depot:</strong> {selectedFleet.depot}</p>
+      </div>
+
+      <div className="driver-card">
+        <h3>Passenger Count</h3>
+        <p className="big">34 On Board</p>
+
+        <div className="driver-actions">
+          <button>➖ Passenger Left</button>
+          <button>➕ Passenger Boarded</button>
+        </div>
+      </div>
+
+      <div className="driver-card">
+        <h3>Next Stop</h3>
+        <p className="big">Peterborough Services</p>
+        <p>ETA: 14:42</p>
+        <p>Delay: +12 mins</p>
+      </div>
+
+      <div className="driver-card warning">
+        <h3>Live Highways Alert</h3>
+        <p>M1 southbound J33 to J32 Lane 1 closure</p>
+        <button>Request Diversion</button>
+      </div>
+
+      <div className="driver-actions">
+        <button className="call">📞 Call Control</button>
+        <button className="report">⚠️ Report Issue</button>
+        <button className="breakdown">🛠 Breakdown</button>
+        <button className="passengers">🚌 Route Update</button>
+      </div>
+
+    </div>
   </section>
 )}
 
         {activePage !== 'dashboard' &&
-        activePage !== 'driver' &&
-        activePage !== 'fleet' &&
-        activePage !== 'depots' &&
-        activePage !== 'parking' &&
-        activePage !== 'services' && (
+         activePage !== 'driver' &&
+         activePage !== 'fleet' &&
+         activePage !== 'depots' &&
+         activePage !== 'parking' &&
+         activePage !== 'services' && (
             <section className="page">
               <h2>{activePage.toUpperCase()}</h2>
               <p>This page is ready to build next.</p>
