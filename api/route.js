@@ -1,3 +1,25 @@
+
+const savedPlaces = [
+  { shortLabel: 'Esk Valley Coaches', label: 'Esk Valley Coaches, 4 Fairfield Way, Stainsacre Lane Industrial Estate, Whitby, YO22 4PU', lat: 54.4719, lng: -0.6267 },
+  { shortLabel: 'Scarborough Railway Station', label: 'Scarborough Railway Station, Westborough, Scarborough, YO11 1TN', lat: 54.2798, lng: -0.4058 },
+  { shortLabel: 'Manchester Airport Terminal 2', label: 'Manchester Airport Terminal 2, Manchester Airport, M90 4ZY', lat: 53.3676, lng: -2.2794 },
+  { shortLabel: 'Birch Services', label: 'Birch Services, M62, Heywood, OL10 2QH', lat: 53.5604, lng: -2.2185 },
+  { shortLabel: 'Scarborough Spa', label: 'Scarborough Spa, South Bay, Scarborough, YO11 2HD', lat: 54.2758, lng: -0.4012 },
+  { shortLabel: 'York Racecourse', label: 'York Racecourse, Knavesmire Road, York, YO23 1EX', lat: 53.9372, lng: -1.0972 },
+]
+
+function norm(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function findSavedPlace(query) {
+  const q = norm(query)
+  return savedPlaces.find((place) => {
+    const text = norm(`${place.shortLabel} ${place.label}`)
+    return text.includes(q) || q.split(' ').every((word) => text.includes(word))
+  }) || null
+}
+
 function toMiles(metres) {
   return Math.round((Number(metres || 0) / 1609.344) * 10) / 10
 }
@@ -9,6 +31,9 @@ function toMinutes(seconds) {
 async function geocode(query) {
   const cleanQuery = String(query || '').trim()
   if (!cleanQuery) return null
+
+  const saved = findSavedPlace(cleanQuery)
+  if (saved) return saved
 
   const url = new URL('https://nominatim.openstreetmap.org/search')
   url.searchParams.set('format', 'json')

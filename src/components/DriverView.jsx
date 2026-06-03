@@ -99,6 +99,21 @@ export default function DriverView({ selectedFleet }) {
   const watchId = useRef(null);
   const wakeLockRef = useRef(null);
 
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(`coachops-route-${vehicle.fleetNo}`);
+      if (!saved) return;
+      const route = JSON.parse(saved);
+      if (!route?.geometry?.length) return;
+      setRouteSummary(route);
+      setDestination(route.destination || "");
+      setStops(Array.isArray(route.stops) ? route.stops : []);
+      setRouteStatus(`Saved route restored: ${route.distanceMiles || "--"} miles`);
+    } catch (error) {
+      console.warn("Could not restore saved route", error);
+    }
+  }, [vehicle.fleetNo]);
+
   const nextStep = useMemo(() => routeSummary?.instructions?.[0] || null, [routeSummary]);
   const followingSteps = useMemo(
     () => (routeSummary?.instructions || []).slice(1, 6),
@@ -249,6 +264,11 @@ export default function DriverView({ selectedFleet }) {
       });
 
       setRouteSummary(route);
+      try {
+        window.localStorage.setItem(`coachops-route-${vehicle.fleetNo}`, JSON.stringify(route));
+      } catch (error) {
+        console.warn("Could not save route locally", error);
+      }
       setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
       setLastAction(`Navigation mode active for ${vehicle.fleetNo}`);
       setNavMode(true);
@@ -262,18 +282,6 @@ export default function DriverView({ selectedFleet }) {
       setRouteStatus("Route planner failed");
     }
   };
-
-  useEffect(() => {
-    const reacquireWakeLock = () => {
-      if (document.visibilityState === "visible" && tracking) {
-        wakeLockRef.current = null;
-        requestWakeLock();
-      }
-    };
-
-    document.addEventListener("visibilitychange", reacquireWakeLock);
-    return () => document.removeEventListener("visibilitychange", reacquireWakeLock);
-  }, [tracking]);
 
   useEffect(() => {
     return () => {
@@ -344,27 +352,17 @@ export default function DriverView({ selectedFleet }) {
   }
 
   if (navMode && routeSummary) {
-    const navSpeed = currentMph(lastPosition?.speedMps);
-
     return (
-      <main className="satnav-page satnav-drive-mode">
-        <section className="satnav-map-wrap satnav-map-full">
-          <RouteMap
-            height="100vh"
-            fleetNo={vehicle.fleetNo}
-            reg={vehicle.reg}
-            liveTracking
-            followCoach
-            navigationMode
-            fitRoute={false}
-          />
-
-          <div className="satnav-top-strip">
+      <main className="satnav-page">
+        <section className="satnav-top-card">
+          <div>
             <strong>{vehicle.fleetNo} · {vehicle.reg}</strong>
-            <span>{routeSummary.destination}</span>
-            <button onClick={() => setNavMode(false)}>Setup</button>
+            <p>{routeSummary.destination}</p>
           </div>
+          <button onClick={() => setNavMode(false)}>Route setup</button>
+        </section>
 
+        <section className="satnav-map-wrap">
           <div className="satnav-instruction-card">
             <div className="satnav-distance">{formatDistance(nextStep)}</div>
             <div>
@@ -373,36 +371,49 @@ export default function DriverView({ selectedFleet }) {
             </div>
           </div>
 
+          <RouteMap
+            height="calc(100vh - 190px)"
+            fleetNo={vehicle.fleetNo}
+            reg={vehicle.reg}
+            liveTracking
+            followCoach
+            navigationMode
+            fitRoute={false}
+          />
+
           <div className="satnav-speed-panel">
             <div className="speed-limit-circle">
               <span>LIMIT</span>
               <strong>--</strong>
-              <small>checking</small>
             </div>
             <div className="current-speed-box">
               <span>YOU</span>
-              <strong>{navSpeed}</strong>
+              <strong>{currentMph(lastPosition?.speedMps)}</strong>
               <small>mph</small>
             </div>
           </div>
 
-          <div className="satnav-next-mini">
-            {followingSteps.slice(0, 2).map((step) => (
-              <p key={step.id}>
-                <strong>{formatDistance(step)}</strong> · {step.instruction}
-              </p>
+          <div className="satnav-actions">
+            <button className="call" onClick={() => notify("Driver requested phone call from Control", "CALL_CONTROL")}>📞 Office</button>
+            <button className="breakdown" onClick={() => notify("HELP REQUEST - driver needs assistance", "HELP_REQUEST")}>🚨 Help</button>
+          </div>
+        </section>
+
+        <section className="satnav-bottom-panel">
+          <div>
+            <h3>Next steps</h3>
+            {followingSteps.map((step) => (
+              <p key={step.id}><strong>{formatDistance(step)}</strong> · {step.instruction}</p>
             ))}
           </div>
-
-          <div className="satnav-actions">
-            <button className="call" onClick={() => notify("Driver requested phone call from Control", "CALL_CONTROL")}>📞 Call Office</button>
-            <button className="breakdown" onClick={() => notify("HELP REQUEST - driver needs assistance", "HELP_REQUEST")}>🚨 Help</button>
+          <div>
+            <h3>Live road intel</h3>
+            <DriverIntel compact />
           </div>
         </section>
       </main>
     );
   }
-
 
   const latestOfficeMessages = officeRequests.filter((item) => item.source === "office");
 
@@ -428,7 +439,21 @@ export default function DriverView({ selectedFleet }) {
         </div>
 
         <button type="button" onClick={addStop}>+ Add Stop</button>
-        {stops.length > 0 && <button type="button" className="secondary-route-button" onClick={() => setStops([])}>Clear Stops</button>}
+        <button
+          type="button"
+          className="secondary-route-button"
+          onClick={() => {
+            setStops([]);
+            setDestination("");
+            setStopInput("");
+            setRouteSummary(null);
+            setNavMode(false);
+            setRouteStatus("Route cleared. Enter a new destination.");
+            window.localStorage.removeItem(`coachops-route-${vehicle.fleetNo}`);
+          }}
+        >
+          Clear Route / Stops
+        </button>
 
         {stops.length > 0 && (
           <div className="route-stop-pills">
