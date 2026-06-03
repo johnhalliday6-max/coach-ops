@@ -239,7 +239,23 @@ function App() {
 
        {activePage === 'driver' && (
   <section className="driver-page">
-    <div className="driver-phone">
+    <div className="driver-layout">
+
+  <div className="driver-left">
+    Journey
+    Passenger Count
+    Next Stop
+  </div>
+
+  <div className="driver-centre">
+    <RouteMap />
+  </div>
+
+  <div className="driver-right">
+    Actions
+  </div>
+
+</div>
 
       <div className="driver-header">
         <div>
