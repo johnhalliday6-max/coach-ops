@@ -1,7 +1,7 @@
 export const fleetData = [
   {
-    fleetNo: 'EV101',
-    reg: 'YX72 AEE',
+    fleetNo: '23031',
+    reg: 'YJ72 CGG',
     operator: 'Esk Valley',
     depot: 'Whitby',
     type: 'Coach',
