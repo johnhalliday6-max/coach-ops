@@ -5,6 +5,11 @@ function asArray(value) {
   return Array.isArray(value) ? value : [value]
 }
 
+function firstItem(value) {
+  if (!value) return null
+  return Array.isArray(value) ? value[0] : value
+}
+
 function findFirst(obj, names) {
   if (!obj || typeof obj !== 'object') return null
 
@@ -33,6 +38,12 @@ function textValue(value) {
   return null
 }
 
+function clean(value, fallback) {
+  const text = textValue(value)
+  if (!text) return fallback
+  return String(text).replace(/\s+/g, ' ').trim()
+}
+
 function findUsefulComment(obj) {
   const possible = findFirst(obj, [
     'generalPublicComment',
@@ -52,15 +63,44 @@ function findUsefulComment(obj) {
 
 function findRoadFromText(text) {
   if (!text) return null
-
-  const match = text.match(/\b(M\d+|A\d+\(M\)|A\d+|A1\(M\))\b/i)
+  const match = text.match(/\b(M\d+|A\d+\(M\)|A1\(M\)|A\d+)\b/i)
   return match ? match[0].toUpperCase() : null
 }
 
-function clean(value, fallback) {
-  const text = textValue(value)
-  if (!text) return fallback
-  return String(text).replace(/\s+/g, ' ').trim()
+function getRecord(situation) {
+  const raw = firstItem(situation?.situationRecord) || {}
+  return (
+    raw?.sitRoadOrCarriagewayOrLaneManagement ||
+    raw?.roadOrCarriagewayOrLaneManagement ||
+    raw
+  )
+}
+
+function getFirstPosition(record) {
+  const locationGroup =
+    record?.locationReference
+      ?.locLocationGroupByList
+      ?.locationContainedInGroup
+
+  const firstLocation = firstItem(locationGroup)
+
+  const posList =
+    firstLocation
+      ?.locLinearLocation
+      ?.gmlLineString
+      ?.locGmlLineString
+      ?.posList
+
+  if (!posList || typeof posList !== 'string') {
+    return { lat: null, lng: null }
+  }
+
+  const coords = posList.trim().split(/\s+/)
+
+  return {
+    lat: Number(coords[0]),
+    lng: Number(coords[1]),
+  }
 }
 
 export default async function handler(req, res) {
@@ -90,16 +130,10 @@ export default async function handler(req, res) {
     })
 
     const data = parser.parse(xml)
-
     const situations = asArray(data?.D2Payload?.situation)
 
     const alerts = situations.slice(0, 12).map((situation, index) => {
-      const recordRaw = situation?.situationRecord || {}
-      const record =
-        recordRaw?.sitRoadOrCarriagewayOrLaneManagement ||
-        recordRaw?.roadOrCarriagewayOrLaneManagement ||
-        recordRaw
-
+      const record = getRecord(situation)
       const detail = clean(findUsefulComment(record), 'Live road and lane closure from National Highways')
 
       const road =
@@ -108,61 +142,33 @@ export default async function handler(req, res) {
         'National Highways'
 
       const location =
-  clean(findFirst(record, [
-    'locationDescriptor',
-    'descriptor',
-    'supplementaryPositionalDescription',
-    'areaName',
-    'namedArea',
-  ]), 'Road closure')
+        clean(findFirst(record, [
+          'locationDescriptor',
+          'descriptor',
+          'supplementaryPositionalDescription',
+          'areaName',
+          'namedArea',
+        ]), 'Road closure')
 
-      const startTime =
-        clean(findFirst(record, ['overallStartTime', 'situationRecordCreationTime']), null)
+      const startTime = clean(findFirst(record, ['overallStartTime', 'situationRecordCreationTime']), null)
+      const endTime = clean(findFirst(record, ['overallEndTime']), null)
+      const { lat, lng } = getFirstPosition(record)
 
-      const endTime =
-        clean(findFirst(record, ['overallEndTime']), null)
-
-  const posList =
-  record?.locationReference
-    ?.locLocationGroupByList
-    ?.locationContainedInGroup?.[0]
-    ?.locLinearLocation
-    ?.gmlLineString
-    ?.locGmlLineString
-    ?.posList
-
-let lat = null
-let lng = null
-
-if (posList) {
-  const coords = posList.trim().split(/\s+/)
-
-  lat = Number(coords[0])
-  lng = Number(coords[1])
-}
-
-return {
-    id: index + 1,
-    road,
-    location,
-    type: 'Road / Lane Closure',
-    detail,
-    speed: 'Live',
-    source: 'National Highways',
-    severity: clean(findFirst(record, ['severity']), 'Live'),
-    startTime,
-    endTime,
-    lat,
-    lng,
-}
-
-    console.log(
-  JSON.stringify(
-    situations[0],
-    null,
-    2
-  )
-)
+      return {
+        id: index + 1,
+        road,
+        location,
+        type: 'Road / Lane Closure',
+        detail,
+        speed: 'Live',
+        source: 'National Highways',
+        severity: clean(findFirst(record, ['severity']), 'Live'),
+        startTime,
+        endTime,
+        lat,
+        lng,
+      }
+    })
 
     return res.status(200).json({
       ok: true,
