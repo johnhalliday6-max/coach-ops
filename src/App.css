@@ -740,3 +740,97 @@ body {
 .coach-live-label strong {
   letter-spacing: 0.4px;
 }
+
+
+/* Driver vehicle select and phone GPS tracking */
+.driver-select-page {
+  min-height: 100vh;
+  background: #07111f;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+}
+
+.driver-select-card {
+  width: 520px;
+  max-width: 100%;
+  background: #0c1a2d;
+  border: 1px solid #21344f;
+  border-radius: 22px;
+  padding: 22px;
+}
+
+.driver-select-card h1 {
+  margin: 0;
+}
+
+.driver-select-card p {
+  color: #9fb3c8;
+}
+
+.driver-vehicle-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.vehicle-select {
+  text-align: left;
+  border: 1px solid #21344f;
+  background: #12243b;
+  color: white;
+  border-radius: 14px;
+  padding: 14px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.vehicle-select strong {
+  font-size: 22px;
+}
+
+.vehicle-select span {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.vehicle-select small {
+  color: #9fb3c8;
+}
+
+.vehicle-select.active {
+  border-color: #20d86b;
+  box-shadow: 0 0 0 2px rgba(32, 216, 107, 0.25);
+}
+
+.driver-start-button {
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 16px;
+  background: #1268ff;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.tracking-card {
+  border-left: 8px solid #20d86b;
+}
+
+.tracking-small {
+  font-weight: bold;
+  color: #334155 !important;
+}
+
+.tracking-error {
+  color: #dc2626 !important;
+  font-weight: bold;
+}
+
+.stop-tracking {
+  background: #dc2626 !important;
+}

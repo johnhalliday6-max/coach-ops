@@ -1,19 +1,152 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import RouteMap from "./RouteMap";
 import DriverIntel from "./DriverIntel";
+import { fleetData } from "../data/fleetData";
 
-const GOOGLE_NAV_URL =
-  "https://www.google.com/maps/dir/?api=1&origin=York&destination=London%20Victoria&waypoints=Peterborough%20Services&travelmode=driving";
+function mph(speedMps) {
+  if (speedMps == null || Number.isNaN(Number(speedMps))) return "Waiting";
+  return `${Math.round(Number(speedMps) * 2.23694)} mph`;
+}
 
 export default function DriverView({ selectedFleet }) {
+  const defaultVehicle =
+    fleetData.find((vehicle) => vehicle.reg === "YJ72 CGG") ||
+    selectedFleet ||
+    fleetData[0];
+
+  const [vehicle, setVehicle] = useState(defaultVehicle);
+  const [vehicleSelected, setVehicleSelected] = useState(false);
   const [passengers, setPassengers] = useState(34);
   const [message, setMessage] = useState("");
-  const [lastAction, setLastAction] = useState("Driver screen ready");
+  const [lastAction, setLastAction] = useState("Select vehicle to begin");
+  const [tracking, setTracking] = useState(false);
+  const [trackingError, setTrackingError] = useState("");
+  const [lastPosition, setLastPosition] = useState(null);
+  const watchId = useRef(null);
 
   const notify = (text) => {
     setLastAction(text);
     alert(text);
   };
+
+  const postLocation = async (position) => {
+    const coords = position.coords;
+
+    const payload = {
+      fleetNo: vehicle.fleetNo,
+      reg: vehicle.reg,
+      operator: vehicle.operator,
+      depot: vehicle.depot,
+      lat: coords.latitude,
+      lng: coords.longitude,
+      accuracy: coords.accuracy,
+      speedMps: coords.speed,
+      heading: coords.heading,
+    };
+
+    setLastPosition({
+      ...payload,
+      updatedAt: new Date().toISOString(),
+    });
+
+    try {
+      await fetch("/api/tracking", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      setLastAction(`Tracking live for ${vehicle.fleetNo} / ${vehicle.reg}`);
+    } catch (error) {
+      console.error(error);
+      setTrackingError("Could not send GPS to office");
+    }
+  };
+
+  const startTracking = () => {
+    if (!navigator.geolocation) {
+      setTrackingError("This phone/browser does not support GPS tracking");
+      return;
+    }
+
+    setTrackingError("");
+    setTracking(true);
+    setLastAction("Requesting phone GPS permission...");
+
+    watchId.current = navigator.geolocation.watchPosition(
+      postLocation,
+      (error) => {
+        setTracking(false);
+        setTrackingError(error.message || "Location permission denied");
+        setLastAction("GPS tracking failed");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000,
+      },
+    );
+  };
+
+  const stopTracking = () => {
+    if (watchId.current != null) {
+      navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+    }
+
+    setTracking(false);
+    setLastAction("Tracking stopped");
+  };
+
+  useEffect(() => {
+    return () => {
+      if (watchId.current != null) {
+        navigator.geolocation.clearWatch(watchId.current);
+      }
+    };
+  }, []);
+
+  if (!vehicleSelected) {
+    return (
+      <main className="driver-select-page">
+        <section className="driver-select-card">
+          <h1>Coach Ops Driver</h1>
+          <p>Select the vehicle you are taking tonight.</p>
+
+          <div className="driver-vehicle-list">
+            {fleetData.map((item) => (
+              <button
+                key={item.fleetNo}
+                className={
+                  item.fleetNo === vehicle.fleetNo
+                    ? "vehicle-select active"
+                    : "vehicle-select"
+                }
+                onClick={() => setVehicle(item)}
+              >
+                <strong>{item.fleetNo}</strong>
+                <span>{item.reg}</span>
+                <small>
+                  {item.operator} · {item.depot}
+                </small>
+              </button>
+            ))}
+          </div>
+
+          <button
+            className="driver-start-button"
+            onClick={() => {
+              setVehicleSelected(true);
+              setLastAction(`Vehicle assigned: ${vehicle.fleetNo} / ${vehicle.reg}`);
+            }}
+          >
+            Continue with {vehicle.fleetNo} / {vehicle.reg}
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="driver-only-page">
@@ -21,28 +154,37 @@ export default function DriverView({ selectedFleet }) {
         <div>
           <h1>Coach Ops Driver</h1>
           <p>
-            {selectedFleet.fleetNo} · York → Peterborough Services → London
-            Victoria
+            {vehicle.fleetNo} · {vehicle.reg} · York → Peterborough Services →
+            London Victoria
           </p>
         </div>
-        <span>LIVE TEST</span>
+        <span>{tracking ? "GPS LIVE" : "LIVE TEST"}</span>
       </header>
 
-      <section className="driver-navigation-card">
+      <section className="driver-navigation-card tracking-card">
         <div>
-          <strong>Tonight's Navigation</strong>
+          <strong>Phone GPS Tracking</strong>
           <p>
-            Use Google Maps for turn-by-turn directions. Keep this screen open
-            for National Highways live road intel.
+            This uses your phone location. Keep this page open to send your
+            position to the office map.
           </p>
+          {lastPosition && (
+            <p className="tracking-small">
+              Last update: {new Date(lastPosition.updatedAt).toLocaleTimeString("en-GB")} · Speed:{" "}
+              {mph(lastPosition.speedMps)} · Accuracy: ±
+              {Math.round(lastPosition.accuracy || 0)}m
+            </p>
+          )}
+          {trackingError && <p className="tracking-error">{trackingError}</p>}
         </div>
-        <button
-          onClick={() => {
-            window.location.href = GOOGLE_NAV_URL;
-          }}
-        >
-          🧭 Start Google Navigation
-        </button>
+
+        {!tracking ? (
+          <button onClick={startTracking}>📡 Start Tracking</button>
+        ) : (
+          <button className="stop-tracking" onClick={stopTracking}>
+            ⏹ Stop Tracking
+          </button>
+        )}
       </section>
 
       <section className="driver-only-grid">
@@ -53,10 +195,13 @@ export default function DriverView({ selectedFleet }) {
               <strong>Booking:</strong> P12440/20519
             </p>
             <p>
-              <strong>Vehicle:</strong> {selectedFleet.fleetNo}
+              <strong>Fleet No:</strong> {vehicle.fleetNo}
             </p>
             <p>
-              <strong>Depot:</strong> {selectedFleet.depot}
+              <strong>Vehicle:</strong> {vehicle.reg}
+            </p>
+            <p>
+              <strong>Depot:</strong> {vehicle.depot}
             </p>
             <p>
               <strong>Next stop:</strong> Peterborough Services
@@ -94,12 +239,13 @@ export default function DriverView({ selectedFleet }) {
         <section className="driver-only-map">
           <div className="driver-map-title">
             <h2>Live Route Map</h2>
-            <span>Road closures plotted from National Highways</span>
+            <span>Closures and your coach plotted live</span>
           </div>
           <RouteMap
             height="calc(100vh - 285px)"
-            fleetNo={selectedFleet.fleetNo}
-            reg={selectedFleet.reg}
+            fleetNo={vehicle.fleetNo}
+            reg={vehicle.reg}
+            liveTracking={!tracking}
           />
         </section>
 

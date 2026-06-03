@@ -56,22 +56,28 @@ const liveCoachTrack = [
   [51.507, -0.128],
 ];
 
+function mph(speedMps) {
+  if (speedMps == null || Number.isNaN(Number(speedMps))) return null;
+  return Math.round(Number(speedMps) * 2.23694);
+}
+
 export default function RouteMap({
   height = "700px",
-  fleetNo = "EV101",
-  reg = "YX72 AEE",
+  fleetNo = "23031",
+  reg = "YJ72 CGG",
   liveTracking = true,
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [coachStep, setCoachStep] = useState(0);
+  const [trackedVehicle, setTrackedVehicle] = useState(null);
 
   const coachIcon = useMemo(
     () =>
       L.divIcon({
         className: "coach-live-marker",
         html: `<div class="coach-live-label"><span>🚌</span><strong>${fleetNo}</strong></div>`,
-        iconSize: [92, 36],
-        iconAnchor: [46, 18],
+        iconSize: [110, 36],
+        iconAnchor: [55, 18],
       }),
     [fleetNo],
   );
@@ -99,11 +105,39 @@ export default function RouteMap({
     return () => window.clearInterval(timer);
   }, [liveTracking]);
 
-  const coachPosition = liveCoachTrack[coachStep];
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTracking = () => {
+      fetch(`/api/tracking?vehicle=${encodeURIComponent(fleetNo)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) {
+            setTrackedVehicle(data.vehicle || null);
+          }
+        })
+        .catch((err) => console.error("Tracking fetch error:", err));
+    };
+
+    loadTracking();
+    const timer = window.setInterval(loadTracking, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [fleetNo]);
+
+  const coachPosition =
+    trackedVehicle?.lat && trackedVehicle?.lng
+      ? [trackedVehicle.lat, trackedVehicle.lng]
+      : liveCoachTrack[coachStep];
+
+  const speed = mph(trackedVehicle?.speedMps);
 
   return (
     <MapContainer
-      center={[52.6, -0.6]}
+      center={coachPosition || [52.6, -0.6]}
       zoom={7}
       style={{ height, width: "100%" }}
     >
@@ -144,9 +178,21 @@ export default function RouteMap({
         <Popup>
           <strong>{fleetNo}</strong>
           <br />
-          Reg: {reg}
+          Reg: {trackedVehicle?.reg || reg}
           <br />
-          Simulated live tracking
+          {trackedVehicle ? "Live phone GPS" : "Simulated live tracking"}
+          {speed != null && (
+            <>
+              <br />
+              Speed: {speed} mph
+            </>
+          )}
+          {trackedVehicle?.accuracy && (
+            <>
+              <br />
+              Accuracy: ±{Math.round(trackedVehicle.accuracy)}m
+            </>
+          )}
         </Popup>
       </Marker>
 
