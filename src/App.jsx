@@ -1,36 +1,45 @@
-import { useState } from 'react'
-import './App.css'
-import logo from './assets/goahead-logo.png'
-import { fleetData } from './data/fleetData'
-import { coachParking } from './data/coachParking'
-import { serviceAreas } from './data/serviceAreas'
-import { depots } from './data/depots'
-import { highwaysTestAlerts } from './data/highwaysTestAlerts'
-import RouteMap from './components/RouteMap'
-import HighwaysLive from './components/HighwaysLive'
+import { useState } from "react";
+import "./App.css";
+import logo from "./assets/goahead-logo.png";
+import { fleetData } from "./data/fleetData";
+import { coachParking } from "./data/coachParking";
+import { serviceAreas } from "./data/serviceAreas";
+import { depots } from "./data/depots";
+import RouteMap from "./components/RouteMap";
+import HighwaysLive from "./components/HighwaysLive";
+import DriverView from "./components/DriverView";
 
 function App() {
-  const [selectedFleet, setSelectedFleet] = useState(fleetData[0])
-  const [search, setSearch] = useState('')
-  const [activePage, setActivePage] = useState('dashboard')
-  const [passengers, setPassengers] = useState(34)
+  const [selectedFleet, setSelectedFleet] = useState(fleetData[0]);
+  const [search, setSearch] = useState("");
+  const isDriverOnly =
+    window.location.pathname === "/driver" ||
+    new URLSearchParams(window.location.search).get("mode") === "driver";
+  const [activePage, setActivePage] = useState(
+    isDriverOnly ? "driver" : "dashboard",
+  );
 
   const filteredFleet = fleetData.filter((vehicle) => {
-    const text = `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.depot} ${vehicle.status}`.toLowerCase()
-    return text.includes(search.toLowerCase())
-  })
+    const text =
+      `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.depot} ${vehicle.status}`.toLowerCase();
+    return text.includes(search.toLowerCase());
+  });
 
   const getStatusIcon = (status) => {
-    if (status.includes('Incident')) return '🔴'
-    if (status.includes('Delay')) return '🟠'
-    return '🟢'
-  }
+    if (status.includes("Incident")) return "🔴";
+    if (status.includes("Delay")) return "🟠";
+    return "🟢";
+  };
 
   const fleetStats = {
     total: fleetData.length,
-    onRoute: fleetData.filter((v) => v.status.includes('On Route')).length,
-    delayed: fleetData.filter((v) => v.status.includes('Delay')).length,
-    incidents: fleetData.filter((v) => v.status.includes('Incident')).length,
+    onRoute: fleetData.filter((v) => v.status.includes("On Route")).length,
+    delayed: fleetData.filter((v) => v.status.includes("Delay")).length,
+    incidents: fleetData.filter((v) => v.status.includes("Incident")).length,
+  };
+
+  if (isDriverOnly) {
+    return <DriverView selectedFleet={selectedFleet} />;
   }
 
   return (
@@ -41,15 +50,62 @@ function App() {
           <span>Coach Operations</span>
         </div>
 
-        <div className={activePage === 'dashboard' ? 'nav active' : 'nav'} onClick={() => setActivePage('dashboard')}>Live Map</div>
-        <div className={activePage === 'driver' ? 'nav active' : 'nav'} onClick={() => setActivePage('driver')}>Driver Mode</div>
-        <div className={activePage === 'fleet' ? 'nav active' : 'nav'} onClick={() => setActivePage('fleet')}>Fleet</div>
-        <div className={activePage === 'depots' ? 'nav active' : 'nav'} onClick={() => setActivePage('depots')}>Depots</div>
-        <div className={activePage === 'routes' ? 'nav active' : 'nav'} onClick={() => setActivePage('routes')}>Routes</div>
-        <div className={activePage === 'drivers' ? 'nav active' : 'nav'} onClick={() => setActivePage('drivers')}>Drivers</div>
-        <div className={activePage === 'incidents' ? 'nav active' : 'nav'} onClick={() => setActivePage('incidents')}>Incidents</div>
-        <div className={activePage === 'parking' ? 'nav active' : 'nav'} onClick={() => setActivePage('parking')}>Coach Parking</div>
-        <div className={activePage === 'services' ? 'nav active' : 'nav'} onClick={() => setActivePage('services')}>Fuel & Services</div>
+        <div
+          className={activePage === "dashboard" ? "nav active" : "nav"}
+          onClick={() => setActivePage("dashboard")}
+        >
+          Live Map
+        </div>
+        <div
+          className="nav"
+          onClick={() => {
+            window.location.href = "/?mode=driver";
+          }}
+        >
+          Driver Mode
+        </div>
+        <div
+          className={activePage === "fleet" ? "nav active" : "nav"}
+          onClick={() => setActivePage("fleet")}
+        >
+          Fleet
+        </div>
+        <div
+          className={activePage === "depots" ? "nav active" : "nav"}
+          onClick={() => setActivePage("depots")}
+        >
+          Depots
+        </div>
+        <div
+          className={activePage === "routes" ? "nav active" : "nav"}
+          onClick={() => setActivePage("routes")}
+        >
+          Routes
+        </div>
+        <div
+          className={activePage === "drivers" ? "nav active" : "nav"}
+          onClick={() => setActivePage("drivers")}
+        >
+          Drivers
+        </div>
+        <div
+          className={activePage === "incidents" ? "nav active" : "nav"}
+          onClick={() => setActivePage("incidents")}
+        >
+          Incidents
+        </div>
+        <div
+          className={activePage === "parking" ? "nav active" : "nav"}
+          onClick={() => setActivePage("parking")}
+        >
+          Coach Parking
+        </div>
+        <div
+          className={activePage === "services" ? "nav active" : "nav"}
+          onClick={() => setActivePage("services")}
+        >
+          Fuel & Services
+        </div>
       </aside>
 
       <main className="main">
@@ -76,7 +132,7 @@ function App() {
           <div>🔴 Incidents: {fleetStats.incidents}</div>
         </section>
 
-        {activePage === 'dashboard' && (
+        {activePage === "dashboard" && (
           <>
             <section className="layout">
               <div className="fleet-panel">
@@ -84,11 +140,17 @@ function App() {
 
                 {filteredFleet.map((vehicle) => (
                   <div
-                    className={vehicle.fleetNo === selectedFleet.fleetNo ? 'fleet active-fleet' : 'fleet'}
+                    className={
+                      vehicle.fleetNo === selectedFleet.fleetNo
+                        ? "fleet active-fleet"
+                        : "fleet"
+                    }
                     key={vehicle.fleetNo}
                     onClick={() => setSelectedFleet(vehicle)}
                   >
-                    <strong>{getStatusIcon(vehicle.status)} {vehicle.fleetNo}</strong>
+                    <strong>
+                      {getStatusIcon(vehicle.status)} {vehicle.fleetNo}
+                    </strong>
                     <span>{vehicle.status}</span>
                   </div>
                 ))}
@@ -107,10 +169,9 @@ function App() {
                 </div>
               </div>
 
-             <div className="map-panel">
-  <RouteMap />
-</div>
-
+              <div className="map-panel">
+                <RouteMap />
+              </div>
 
               <div className="tools-panel">
                 <h3>Route Tools</h3>
@@ -128,7 +189,7 @@ function App() {
               </div>
             </section>
 
-          <HighwaysLive />
+            <HighwaysLive />
 
             <section className="bottom-grid">
               <div className="card incident">
@@ -160,7 +221,7 @@ function App() {
           </>
         )}
 
-        {activePage === 'fleet' && (
+        {activePage === "fleet" && (
           <section className="page">
             <h2>Fleet Database</h2>
 
@@ -168,21 +229,37 @@ function App() {
               {fleetData.map((vehicle) => (
                 <div className="parking-card" key={vehicle.fleetNo}>
                   <h3>{vehicle.fleetNo}</h3>
-                  <p><strong>Reg:</strong> {vehicle.reg}</p>
-                  <p><strong>Operator:</strong> {vehicle.operator}</p>
-                  <p><strong>Depot:</strong> {vehicle.depot}</p>
-                  <p><strong>Status:</strong> {vehicle.status}</p>
-                  <p><strong>Height:</strong> {vehicle.height}</p>
-                  <p><strong>Width:</strong> {vehicle.width}</p>
-                  <p><strong>Length:</strong> {vehicle.length}</p>
-                  <p><strong>Weight:</strong> {vehicle.weight}</p>
+                  <p>
+                    <strong>Reg:</strong> {vehicle.reg}
+                  </p>
+                  <p>
+                    <strong>Operator:</strong> {vehicle.operator}
+                  </p>
+                  <p>
+                    <strong>Depot:</strong> {vehicle.depot}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {vehicle.status}
+                  </p>
+                  <p>
+                    <strong>Height:</strong> {vehicle.height}
+                  </p>
+                  <p>
+                    <strong>Width:</strong> {vehicle.width}
+                  </p>
+                  <p>
+                    <strong>Length:</strong> {vehicle.length}
+                  </p>
+                  <p>
+                    <strong>Weight:</strong> {vehicle.weight}
+                  </p>
                 </div>
               ))}
             </div>
           </section>
         )}
 
-        {activePage === 'depots' && (
+        {activePage === "depots" && (
           <section className="page">
             <h2>Depots</h2>
 
@@ -190,17 +267,23 @@ function App() {
               {depots.map((depot) => (
                 <div className="parking-card" key={depot.id}>
                   <h3>{depot.name}</h3>
-                  <p><strong>Town:</strong> {depot.town}</p>
-                  <p><strong>Operator:</strong> {depot.operator}</p>
-                  <p><strong>Facilities:</strong></p>
-                  <p>{depot.facilities.join(', ')}</p>
+                  <p>
+                    <strong>Town:</strong> {depot.town}
+                  </p>
+                  <p>
+                    <strong>Operator:</strong> {depot.operator}
+                  </p>
+                  <p>
+                    <strong>Facilities:</strong>
+                  </p>
+                  <p>{depot.facilities.join(", ")}</p>
                 </div>
               ))}
             </div>
           </section>
         )}
 
-        {activePage === 'parking' && (
+        {activePage === "parking" && (
           <section className="page">
             <h2>Coach Parking</h2>
 
@@ -208,10 +291,18 @@ function App() {
               {coachParking.map((place) => (
                 <div className="parking-card" key={place.id}>
                   <h3>{place.name}</h3>
-                  <p><strong>Type:</strong> {place.type}</p>
-                  <p><strong>Area:</strong> {place.area}</p>
-                  <p><strong>Booking:</strong> {place.booking}</p>
-                  <p><strong>Status:</strong> {place.status}</p>
+                  <p>
+                    <strong>Type:</strong> {place.type}
+                  </p>
+                  <p>
+                    <strong>Area:</strong> {place.area}
+                  </p>
+                  <p>
+                    <strong>Booking:</strong> {place.booking}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {place.status}
+                  </p>
                   <p>{place.notes}</p>
                 </div>
               ))}
@@ -219,7 +310,7 @@ function App() {
           </section>
         )}
 
-        {activePage === 'services' && (
+        {activePage === "services" && (
           <section className="page">
             <h2>Fuel & Services</h2>
 
@@ -227,92 +318,35 @@ function App() {
               {serviceAreas.map((service) => (
                 <div className="parking-card" key={service.id}>
                   <h3>{service.name}</h3>
-                  <p><strong>Road:</strong> {service.road}</p>
-                  <p><strong>Area:</strong> {service.area}</p>
-                  <p><strong>Status:</strong> {service.status}</p>
-                  <p><strong>Facilities:</strong></p>
-                  <p>{service.facilities.join(', ')}</p>
+                  <p>
+                    <strong>Road:</strong> {service.road}
+                  </p>
+                  <p>
+                    <strong>Area:</strong> {service.area}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {service.status}
+                  </p>
+                  <p>
+                    <strong>Facilities:</strong>
+                  </p>
+                  <p>{service.facilities.join(", ")}</p>
                 </div>
               ))}
             </div>
           </section>
         )}
 
-       {activePage === 'driver' && (
-  <section className="driver-page">
-    
+        {activePage === "driver" && (
+          <DriverView selectedFleet={selectedFleet} />
+        )}
 
-      <div className="driver-header">
-        <div>
-          <h2>Driver Mode</h2>
-          <p>{selectedFleet.fleetNo} · York → London Victoria</p>
-        </div>
-        <span>LIVE</span>
-      </div>
-
-      <div className="driver-card">
-        <h3>Journey</h3>
-        <p><strong>Booking:</strong> P12440/20519</p>
-        <p><strong>Vehicle:</strong> {selectedFleet.fleetNo}</p>
-        <p><strong>Depot:</strong> {selectedFleet.depot}</p>
-      </div>
-
-      <div className="driver-card">
-        <h3>Passenger Count</h3>
-        <p className="big">{passengers} On Board</p>
-
-        <div className="driver-actions">
-          <button onClick={() => setPassengers(Math.max(0, passengers - 1))}>
-  ➖ Passenger Left
-</button>
-          <button onClick={() => setPassengers(passengers + 1)}>
-  ➕ Passenger Boarded
-</button>
-        </div>
-      </div>
-
-      <div className="driver-card">
-        <h3>Next Stop</h3>
-        <p className="big">Peterborough Services</p>
-        <p>ETA: 14:42</p>
-        <p>Delay: +12 mins</p>
-      </div>
-
-      <div className="driver-card warning">
-        <h3>Live Highways Alert</h3>
-        <p>M1 southbound J33 to J32 Lane 1 closure</p>
-        <button>Request Diversion</button>
-      </div>
-
-            <button className="call" onClick={() => alert('Calling Control...')}>
-  📞 Call Control
-</button>
-
-<button className="report" onClick={() => alert('Issue reported to Control')}>
-  ⚠️ Report Issue
-</button>
-
-<button className="breakdown" onClick={() => alert('Breakdown alert sent to Control')}>
-  🛠 Breakdown
-</button>
-
-<button className="passengers" onClick={() => alert('Route update requested')}>
-  🚌 Route Update
-</button>
-
-<button className="passengers" onClick={() => alert('Route update requested')}>
-  🚌 Route Update
-</button>
-
-  </section>
-)}
-
-        {activePage !== 'dashboard' &&
-         activePage !== 'driver' &&
-         activePage !== 'fleet' &&
-         activePage !== 'depots' &&
-         activePage !== 'parking' &&
-         activePage !== 'services' && (
+        {activePage !== "dashboard" &&
+          activePage !== "driver" &&
+          activePage !== "fleet" &&
+          activePage !== "depots" &&
+          activePage !== "parking" &&
+          activePage !== "services" && (
             <section className="page">
               <h2>{activePage.toUpperCase()}</h2>
               <p>This page is ready to build next.</p>
@@ -320,7 +354,7 @@ function App() {
           )}
       </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

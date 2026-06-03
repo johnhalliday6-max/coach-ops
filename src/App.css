@@ -444,3 +444,273 @@ body {
 .driver-page .driver-card {
   min-height: 150px;
 }
+/* Driver-only test screen */
+.driver-only-page {
+  min-height: 100vh;
+  background: #07111f;
+  color: white;
+  padding: 18px;
+}
+
+.driver-only-header {
+  background: #0c1a2d;
+  border: 1px solid #21344f;
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.driver-only-header h1,
+.driver-only-header p {
+  margin: 0;
+}
+
+.driver-only-header p {
+  color: #9fb3c8;
+  margin-top: 4px;
+}
+
+.driver-only-header span {
+  background: #20d86b;
+  color: #06101d;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.driver-navigation-card {
+  background: #f7f9fc;
+  color: #0b1220;
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.driver-navigation-card p {
+  margin: 4px 0 0;
+  color: #52657a;
+}
+
+.driver-navigation-card button,
+.driver-card button {
+  border: 0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: #1268ff;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.driver-only-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(420px, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+
+.driver-only-left,
+.driver-only-right {
+  display: grid;
+  gap: 14px;
+}
+
+.driver-only-map {
+  background: #f7f9fc;
+  border-radius: 18px;
+  padding: 12px;
+  color: #0b1220;
+  overflow: hidden;
+}
+
+.driver-map-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.driver-map-title h2 {
+  margin: 0;
+}
+
+.driver-map-title span {
+  color: #52657a;
+  font-weight: bold;
+}
+
+.driver-card {
+  background: #f7f9fc;
+  color: #0b1220;
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.driver-card h3 {
+  margin-top: 0;
+}
+
+.passenger-card {
+  text-align: center;
+}
+
+.driver-passenger-number {
+  font-size: 54px;
+  line-height: 1;
+  margin: 12px 0;
+  font-weight: 900;
+}
+
+.driver-counter-buttons,
+.driver-control-buttons {
+  display: grid;
+  gap: 10px;
+}
+
+.driver-counter-buttons {
+  grid-template-columns: 1fr 1fr;
+}
+
+.driver-counter-buttons button,
+.driver-control-buttons button {
+  border: 0;
+  border-radius: 12px;
+  padding: 14px;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.driver-counter-buttons button:first-child {
+  background: #475569;
+}
+
+.driver-counter-buttons button:last-child {
+  background: #1268ff;
+}
+
+.driver-progress-list {
+  display: grid;
+  gap: 10px;
+  font-weight: bold;
+}
+
+.active-stop {
+  background: #fff3cd;
+  border-left: 6px solid #ffb020;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.driver-intel-card {
+  background: #0c1a2d;
+  color: white;
+  border: 1px solid #21344f;
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.driver-section-title h3,
+.driver-section-title span {
+  margin: 0;
+}
+
+.driver-section-title span {
+  display: block;
+  color: #9fb3c8;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.driver-intel-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.driver-intel-item {
+  background: #12243b;
+  border-left: 6px solid #ffb020;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.driver-intel-road {
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.driver-intel-item p {
+  margin: 0 0 8px;
+}
+
+.driver-intel-item small {
+  color: #9fb3c8;
+}
+
+.driver-message {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  padding: 12px;
+  font-family: inherit;
+  margin-bottom: 10px;
+}
+
+.driver-last-action {
+  background: #12243b;
+  border: 1px solid #21344f;
+  border-radius: 14px;
+  padding: 12px;
+  color: #9fb3c8;
+  font-weight: bold;
+}
+
+.map-emoji-marker {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 999px;
+  background: white;
+  border: 2px solid #1268ff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  font-size: 18px;
+}
+
+.closure-marker {
+  border-color: #dc2626;
+}
+
+@media (max-width: 1100px) {
+  .driver-only-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-navigation-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .driver-navigation-card button {
+    width: 100%;
+  }
+
+  .driver-map-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
