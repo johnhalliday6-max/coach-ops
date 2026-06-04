@@ -21,6 +21,7 @@ function App() {
     isDriverOnly ? "driver" : "dashboard",
   );
   const [officeRequests, setOfficeRequests] = useState([]);
+  const [activeOfficeRoute, setActiveOfficeRoute] = useState(null);
 
   useEffect(() => {
     if (isDriverOnly) return undefined;
@@ -46,6 +47,27 @@ function App() {
       window.clearInterval(timer);
     };
   }, [isDriverOnly]);
+
+  useEffect(() => {
+    if (isDriverOnly || !selectedFleet?.fleetNo) return undefined;
+
+    let cancelled = false;
+    const loadActiveRoute = () => {
+      fetch(`/api/routes?vehicle=${encodeURIComponent(selectedFleet.fleetNo)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) setActiveOfficeRoute(data.route || null);
+        })
+        .catch((err) => console.error("Office active route fetch failed", err));
+    };
+
+    loadActiveRoute();
+    const timer = window.setInterval(loadActiveRoute, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isDriverOnly, selectedFleet?.fleetNo]);
 
   const sendOfficeRoutePush = async () => {
     try {
@@ -190,7 +212,7 @@ function App() {
         <section className="statusbar">
           <strong>Fleet: {selectedFleet.fleetNo}</strong>
           <strong>Depot: {selectedFleet.depot}</strong>
-          <strong>Route: York → London Victoria</strong>
+          <strong>Route: {activeOfficeRoute?.destination || "No active route"}</strong>
           <span className="green">{selectedFleet.status}</span>
         </section>
 

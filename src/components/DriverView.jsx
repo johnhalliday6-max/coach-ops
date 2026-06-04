@@ -451,7 +451,7 @@ export default function DriverView({ selectedFleet }) {
             <strong>{vehicle.fleetNo} · {vehicle.reg}</strong>
             <p>{routeSummary.destination}</p>
           </div>
-          <button onClick={() => setNavMode(false)}>Route setup</button>
+          <button onClick={() => setNavMode(false)}>Route overview</button>
         </section>
 
         {pendingRoutePush && (
@@ -508,18 +508,6 @@ export default function DriverView({ selectedFleet }) {
           </div>
         </section>
 
-        <section className="satnav-bottom-panel">
-          <div>
-            <h3>Next steps</h3>
-            {followingSteps.map((step) => (
-              <p key={step.id}><strong>{formatDistance(step)}</strong> · {step.instruction}</p>
-            ))}
-          </div>
-          <div>
-            <h3>Live road intel</h3>
-            <DriverIntel compact />
-          </div>
-        </section>
       </main>
     );
   }

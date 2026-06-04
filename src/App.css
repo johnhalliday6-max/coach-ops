@@ -1499,3 +1499,116 @@ body {
 .nav-route-push {
   margin-bottom: 8px;
 }
+
+
+/* Hotfix: make driver view feel more like sat nav than tracker */
+.satnav-page {
+  padding: 0;
+  background: #06101d;
+}
+
+.satnav-top-card {
+  margin: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  min-height: 54px;
+}
+
+.satnav-map-wrap {
+  border-radius: 0;
+  height: calc(100vh - 55px);
+}
+
+.satnav-map-wrap .leaflet-container {
+  background: #e9f0ea;
+}
+
+.driver-satnav-map {
+  cursor: default;
+}
+
+.satnav-instruction-card {
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  grid-template-columns: 76px 1fr;
+  padding: 8px 10px;
+  border-radius: 15px;
+}
+
+.satnav-distance {
+  font-size: 20px;
+  padding: 9px 5px;
+}
+
+.satnav-instruction-card h1 {
+  font-size: clamp(17px, 3.4vw, 28px);
+}
+
+.satnav-instruction-card p {
+  font-size: 14px;
+}
+
+.satnav-eta-strip {
+  top: 86px;
+}
+
+.satnav-speed-panel {
+  left: 12px;
+  bottom: 82px;
+}
+
+.speed-limit-circle,
+.current-speed-box {
+  width: 76px;
+  height: 76px;
+  border-width: 8px;
+}
+
+.speed-limit-circle strong,
+.current-speed-box strong {
+  font-size: 24px;
+}
+
+.satnav-actions {
+  left: 96px;
+  right: 10px;
+  bottom: 16px;
+}
+
+.coach-live-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: #06101d;
+  border: 3px solid #20d86b;
+  color: white;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 5px 18px rgba(0,0,0,0.38);
+  position: relative;
+}
+
+.coach-live-dot span {
+  color: #20d86b;
+  font-size: 20px;
+  line-height: 1;
+  display: block;
+  transform-origin: center;
+}
+
+.coach-live-dot small {
+  position: absolute;
+  left: 50%;
+  top: 37px;
+  transform: translateX(-50%);
+  background: rgba(6,16,29,0.88);
+  color: white;
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
