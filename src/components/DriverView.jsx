@@ -3,6 +3,63 @@ import RouteMap from "./RouteMap";
 import DriverIntel from "./DriverIntel";
 import { fleetData } from "../data/fleetData";
 
+
+function metresBetween(a, b) {
+  if (!a || !b) return Infinity;
+  const lat1 = Number(a.lat ?? a[0]);
+  const lng1 = Number(a.lng ?? a[1]);
+  const lat2 = Number(b.lat ?? b[0]);
+  const lng2 = Number(b.lng ?? b[1]);
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return Infinity;
+  const R = 6371000;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function distanceToRouteMetres(position, geometry) {
+  if (!position || !Array.isArray(geometry) || geometry.length === 0) return Infinity;
+  let best = Infinity;
+  for (const point of geometry) {
+    const d = metresBetween(position, point);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function nearestInstructionIndex(position, instructions) {
+  if (!position || !Array.isArray(instructions) || instructions.length === 0) return 0;
+  let bestIndex = 0;
+  let bestDistance = Infinity;
+  instructions.forEach((step, index) => {
+    if (!step.location) return;
+    const d = metresBetween(position, step.location);
+    if (d < bestDistance) {
+      bestDistance = d;
+      bestIndex = index;
+    }
+  });
+
+  // When very close to the current instruction, advance to the next useful one.
+  if (bestDistance < 45 && bestIndex < instructions.length - 1) return bestIndex + 1;
+  return bestIndex;
+}
+
+function formatMetres(metres) {
+  if (!Number.isFinite(metres)) return '--';
+  if (metres < 1000) return `${Math.max(10, Math.round(metres / 10) * 10)} yd`;
+  return `${Math.round((metres / 1609.344) * 10) / 10} mi`;
+}
+
+function etaFromMinutes(minutes) {
+  const value = Number(minutes || 0);
+  if (!value) return '--:--';
+  const date = new Date(Date.now() + value * 60 * 1000);
+  return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
 function currentMph(speedMps) {
   if (speedMps == null || Number.isNaN(Number(speedMps))) return "--";
   return Math.max(0, Math.round(Number(speedMps) * 2.23694));
@@ -96,29 +153,24 @@ export default function DriverView({ selectedFleet }) {
   const [routeSummary, setRouteSummary] = useState(null);
   const [officeRequests, setOfficeRequests] = useState([]);
   const [navMode, setNavMode] = useState(false);
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [offRoute, setOffRoute] = useState(false);
   const watchId = useRef(null);
+  const rerouteLock = useRef(false);
   const wakeLockRef = useRef(null);
 
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(`coachops-route-${vehicle.fleetNo}`);
-      if (!saved) return;
-      const route = JSON.parse(saved);
-      if (!route?.geometry?.length) return;
-      setRouteSummary(route);
-      setDestination(route.destination || "");
-      setStops(Array.isArray(route.stops) ? route.stops : []);
-      setRouteStatus(`Saved route restored: ${route.distanceMiles || "--"} miles`);
-    } catch (error) {
-      console.warn("Could not restore saved route", error);
-    }
-  }, [vehicle.fleetNo]);
-
-  const nextStep = useMemo(() => routeSummary?.instructions?.[0] || null, [routeSummary]);
-  const followingSteps = useMemo(
-    () => (routeSummary?.instructions || []).slice(1, 6),
-    [routeSummary],
+  const nextStep = useMemo(
+    () => routeSummary?.instructions?.[activeStepIndex] || routeSummary?.instructions?.[0] || null,
+    [routeSummary, activeStepIndex],
   );
+  const followingSteps = useMemo(
+    () => (routeSummary?.instructions || []).slice(activeStepIndex + 1, activeStepIndex + 6),
+    [routeSummary, activeStepIndex],
+  );
+  const nextStepDistance = useMemo(() => {
+    if (!lastPosition || !nextStep?.location) return null;
+    return metresBetween(lastPosition, nextStep.location);
+  }, [lastPosition, nextStep]);
 
   const postOfficeRequest = async (type, text, source = "driver") => {
     try {
@@ -159,6 +211,11 @@ export default function DriverView({ selectedFleet }) {
       speedMps: coords.speed,
       heading: coords.heading,
     };
+
+    if (payload.accuracy && payload.accuracy > 80) {
+      setLastAction(`GPS accuracy poor: ±${Math.round(payload.accuracy)}m`);
+      return;
+    }
 
     setLastPosition({ ...payload, updatedAt: new Date().toISOString() });
 
@@ -228,6 +285,10 @@ export default function DriverView({ selectedFleet }) {
     }
 
     setRouteStatus("Building route from your live GPS...");
+    setRouteSummary(null);
+    setActiveStepIndex(0);
+    setOffRoute(false);
+    await fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }).catch(() => {});
 
     try {
       const routeResponse = await fetch("/api/route", {
@@ -264,11 +325,7 @@ export default function DriverView({ selectedFleet }) {
       });
 
       setRouteSummary(route);
-      try {
-        window.localStorage.setItem(`coachops-route-${vehicle.fleetNo}`, JSON.stringify(route));
-      } catch (error) {
-        console.warn("Could not save route locally", error);
-      }
+      setActiveStepIndex(0);
       setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
       setLastAction(`Navigation mode active for ${vehicle.fleetNo}`);
       setNavMode(true);
@@ -289,6 +346,30 @@ export default function DriverView({ selectedFleet }) {
       if (wakeLockRef.current) wakeLockRef.current.release?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!lastPosition || !routeSummary) return;
+
+    const currentPoint = { lat: lastPosition.lat, lng: lastPosition.lng };
+    const nextIndex = nearestInstructionIndex(currentPoint, routeSummary.instructions || []);
+    setActiveStepIndex((current) => Math.max(current, nextIndex));
+
+    const routeDistance = distanceToRouteMetres(currentPoint, routeSummary.geometry || []);
+    const isOffRoute = routeDistance > 150;
+    setOffRoute(isOffRoute);
+
+    if (isOffRoute && !rerouteLock.current && destination.trim()) {
+      rerouteLock.current = true;
+      setRouteStatus('Off route - recalculating...');
+      window.setTimeout(() => {
+        planRoute().finally(() => {
+          window.setTimeout(() => {
+            rerouteLock.current = false;
+          }, 30000);
+        });
+      }, 500);
+    }
+  }, [lastPosition, routeSummary, destination]);
 
   useEffect(() => {
     if (!vehicleSelected) return undefined;
@@ -364,11 +445,17 @@ export default function DriverView({ selectedFleet }) {
 
         <section className="satnav-map-wrap">
           <div className="satnav-instruction-card">
-            <div className="satnav-distance">{formatDistance(nextStep)}</div>
+            <div className="satnav-distance">{formatMetres(nextStepDistance ?? nextStep?.distanceMetres)}</div>
             <div>
               <h1>{nextStep?.instruction || "Follow current route"}</h1>
-              <p>{nextStep?.roadName || routeSummary.destination}</p>
+              <p>{offRoute ? "Recalculating route" : (nextStep?.roadName || routeSummary.destination)}</p>
             </div>
+          </div>
+
+          <div className="satnav-eta-strip">
+            <span>ETA <strong>{etaFromMinutes(routeSummary.durationMinutes)}</strong></span>
+            <span>Remaining <strong>{routeSummary.distanceMiles || "--"} mi</strong></span>
+            <span>Engine <strong>{routeSummary.engine || "route"}</strong></span>
           </div>
 
           <RouteMap
@@ -439,21 +526,6 @@ export default function DriverView({ selectedFleet }) {
         </div>
 
         <button type="button" onClick={addStop}>+ Add Stop</button>
-        <button
-          type="button"
-          className="secondary-route-button"
-          onClick={() => {
-            setStops([]);
-            setDestination("");
-            setStopInput("");
-            setRouteSummary(null);
-            setNavMode(false);
-            setRouteStatus("Route cleared. Enter a new destination.");
-            window.localStorage.removeItem(`coachops-route-${vehicle.fleetNo}`);
-          }}
-        >
-          Clear Route / Stops
-        </button>
 
         {stops.length > 0 && (
           <div className="route-stop-pills">

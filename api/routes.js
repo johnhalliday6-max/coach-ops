@@ -1,4 +1,4 @@
-import { hasSupabase, supabaseFetch } from './_supabase.js'
+import { hasSupabase, supabaseFetch } from './lib/storage.js'
 
 const store = globalThis.__coachOpsRoutesStore || new Map()
 globalThis.__coachOpsRoutesStore = store
@@ -7,71 +7,38 @@ function cleanVehicleId(value) {
   return String(value || '').trim().toUpperCase()
 }
 
-function makeRoute(vehicleId, body = {}) {
+function memoryRoutes() {
+  return Array.from(store.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+}
+
+function toDbRoute(route) {
   return {
-    fleetNo: vehicleId,
-    reg: body.reg || vehicleId,
-    destination: body.destination || 'Destination',
-    waypoint: body.waypoint || '',
-    startLabel: body.startLabel || 'Current Location',
-    start: body.start || null,
-    end: body.end || null,
-    waypointPoint: body.waypointPoint || null,
-    waypoints: Array.isArray(body.waypoints) ? body.waypoints : [],
-    stops: Array.isArray(body.stops) ? body.stops : [],
-    instructions: Array.isArray(body.instructions) ? body.instructions : [],
-    geometry: Array.isArray(body.geometry) ? body.geometry : [],
-    distanceMiles: body.distanceMiles || null,
-    durationMinutes: body.durationMinutes || null,
-    updatedAt: body.updatedAt || new Date().toISOString(),
+    vehicle: route.fleetNo,
+    destination: route.destination || 'Destination',
+    stops: {
+      route,
+      stops: route.stops || [],
+      waypoints: route.waypoints || [],
+    },
+    distance: route.distanceMiles == null ? null : String(route.distanceMiles),
+    duration: route.durationMinutes == null ? null : String(route.durationMinutes),
+    accepted: true,
+    created_at: route.updatedAt || new Date().toISOString(),
   }
 }
 
-function fromRouteRow(row) {
-  if (!row) return null
-  const payload = row.stops?.__route || row.stops || {}
+function fromDbRoute(row) {
+  const stored = row?.stops?.route || {}
   return {
-    ...payload,
-    fleetNo: row.vehicle,
-    destination: row.destination || payload.destination,
-    distanceMiles: payload.distanceMiles || row.distance,
-    durationMinutes: payload.durationMinutes || row.duration,
-    updatedAt: row.created_at || payload.updatedAt,
+    ...stored,
+    fleetNo: cleanVehicleId(row.vehicle || stored.fleetNo),
+    destination: row.destination || stored.destination || 'Destination',
+    stops: stored.stops || row?.stops?.stops || [],
+    waypoints: stored.waypoints || row?.stops?.waypoints || [],
+    distanceMiles: stored.distanceMiles || row.distance || null,
+    durationMinutes: stored.durationMinutes || row.duration || null,
+    updatedAt: row.created_at || stored.updatedAt,
   }
-}
-
-async function saveRoute(route) {
-  return supabaseFetch('routes', {
-    method: 'POST',
-    body: JSON.stringify({
-      vehicle: route.fleetNo,
-      destination: route.destination,
-      stops: { __route: route },
-      distance: route.distanceMiles == null ? null : String(route.distanceMiles),
-      duration: route.durationMinutes == null ? null : String(route.durationMinutes),
-      accepted: true,
-      created_at: route.updatedAt,
-    }),
-  })
-}
-
-async function getRoutes(vehicleId) {
-  const filter = vehicleId ? `&vehicle=eq.${encodeURIComponent(vehicleId)}` : ''
-  const rows = await supabaseFetch(`routes?select=*&order=created_at.desc${filter}&limit=50`, {
-    method: 'GET',
-    headers: { Prefer: undefined },
-  })
-
-  const routes = []
-  const seen = new Set()
-  for (const row of rows || []) {
-    const id = cleanVehicleId(row.vehicle)
-    if (vehicleId) return { route: fromRouteRow(row), routes: rows.map(fromRouteRow).filter(Boolean) }
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    routes.push(fromRouteRow(row))
-  }
-  return { route: null, routes }
 }
 
 export default async function handler(req, res) {
@@ -81,24 +48,68 @@ export default async function handler(req, res) {
       const vehicleId = cleanVehicleId(body.fleetNo || body.vehicleId || body.reg)
       if (!vehicleId) return res.status(400).json({ ok: false, error: 'Missing vehicle id' })
 
-      const route = makeRoute(vehicleId, body)
-      store.set(vehicleId, route)
-      if (hasSupabase()) await saveRoute(route)
+      const route = {
+        fleetNo: vehicleId,
+        reg: body.reg || vehicleId,
+        destination: body.destination || 'Destination',
+        waypoint: body.waypoint || '',
+        startLabel: body.startLabel || 'Current Location',
+        start: body.start || null,
+        end: body.end || null,
+        waypointPoint: body.waypointPoint || null,
+        waypoints: Array.isArray(body.waypoints) ? body.waypoints : [],
+        stops: Array.isArray(body.stops) ? body.stops : [],
+        instructions: Array.isArray(body.instructions) ? body.instructions : [],
+        geometry: Array.isArray(body.geometry) ? body.geometry : [],
+        distanceMiles: body.distanceMiles || null,
+        durationMinutes: body.durationMinutes || null,
+        engine: body.engine || 'unknown',
+        updatedAt: body.updatedAt || new Date().toISOString(),
+      }
 
-      return res.status(200).json({ ok: true, route, persistent: hasSupabase() })
+      store.set(vehicleId, route)
+
+      if (hasSupabase()) {
+        try {
+          await supabaseFetch('routes', {
+            method: 'POST',
+            body: JSON.stringify(toDbRoute(route)),
+          })
+        } catch (error) {
+          console.warn('Supabase route save failed, using memory fallback', error.message)
+        }
+      }
+
+      return res.status(200).json({ ok: true, route })
     }
 
     if (req.method === 'GET') {
       const vehicleId = cleanVehicleId(req.query?.vehicle)
 
       if (hasSupabase()) {
-        const result = await getRoutes(vehicleId)
-        return res.status(200).json({ ok: true, ...result, persistent: true })
+        try {
+          const rows = await supabaseFetch(
+            vehicleId
+              ? `routes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=1`
+              : 'routes?order=created_at.desc&limit=50',
+          )
+          const routes = (Array.isArray(rows) ? rows : []).map(fromDbRoute)
+          return res.status(200).json({ ok: true, route: vehicleId ? routes[0] || null : null, routes })
+        } catch (error) {
+          console.warn('Supabase route read failed, using memory fallback', error.message)
+        }
       }
 
-      const routes = Array.from(store.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-      if (vehicleId) return res.status(200).json({ ok: true, route: store.get(vehicleId) || null, routes, persistent: false })
-      return res.status(200).json({ ok: true, routes, persistent: false })
+      const routes = memoryRoutes()
+      if (vehicleId) return res.status(200).json({ ok: true, route: store.get(vehicleId) || null, routes })
+      return res.status(200).json({ ok: true, routes })
+    }
+
+    if (req.method === 'DELETE') {
+      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      if (vehicleId) store.delete(vehicleId)
+      else store.clear()
+      return res.status(200).json({ ok: true })
     }
 
     return res.status(405).json({ ok: false, error: 'Method not allowed' })

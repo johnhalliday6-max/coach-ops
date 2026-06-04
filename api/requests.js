@@ -1,4 +1,4 @@
-import { hasSupabase, supabaseFetch } from './_supabase.js'
+import { hasSupabase, supabaseFetch } from './lib/storage.js'
 
 const store = globalThis.__coachOpsRequestsStore || []
 globalThis.__coachOpsRequestsStore = store
@@ -7,43 +7,24 @@ function cleanVehicleId(value) {
   return String(value || '').trim().toUpperCase()
 }
 
-function fromIncidentRow(row) {
-  if (!row) return null
+function memoryRequests(vehicleId, includeClosed) {
+  return (vehicleId ? store.filter((item) => cleanVehicleId(item.fleetNo) === vehicleId) : store)
+    .filter((item) => includeClosed || item.status !== 'closed')
+}
+
+function fromDbIncident(row) {
   return {
     id: String(row.id),
-    fleetNo: row.vehicle,
-    reg: row.vehicle,
+    fleetNo: cleanVehicleId(row.vehicle),
+    reg: cleanVehicleId(row.vehicle),
     operator: 'Esk Valley',
     depot: 'Whitby',
     type: row.type || 'MESSAGE',
     message: row.message || '',
-    source: row.type === 'ROUTE_PUSH' ? 'office' : 'driver',
+    source: String(row.type || '').startsWith('ROUTE_PUSH') ? 'office' : 'driver',
     status: String(row.status || 'OPEN').toLowerCase() === 'closed' ? 'closed' : 'new',
     createdAt: row.created_at,
   }
-}
-
-async function saveIncident(request) {
-  return supabaseFetch('incidents', {
-    method: 'POST',
-    body: JSON.stringify({
-      vehicle: request.fleetNo,
-      type: request.type,
-      message: request.message,
-      status: request.status === 'closed' ? 'closed' : 'OPEN',
-      created_at: request.createdAt,
-    }),
-  })
-}
-
-async function getIncidents(vehicleId, includeClosed) {
-  const vehicleFilter = vehicleId ? `&vehicle=eq.${encodeURIComponent(vehicleId)}` : ''
-  const statusFilter = includeClosed ? '' : '&status=neq.closed'
-  const rows = await supabaseFetch(`incidents?select=*&order=created_at.desc${vehicleFilter}${statusFilter}&limit=100`, {
-    method: 'GET',
-    headers: { Prefer: undefined },
-  })
-  return (rows || []).map(fromIncidentRow).filter(Boolean)
 }
 
 export default async function handler(req, res) {
@@ -68,13 +49,26 @@ export default async function handler(req, res) {
 
       store.unshift(request)
       if (store.length > 100) store.length = 100
+
       if (hasSupabase()) {
-        const rows = await saveIncident(request)
-        const saved = Array.isArray(rows) && rows[0] ? fromIncidentRow(rows[0]) : request
-        return res.status(200).json({ ok: true, request: saved, persistent: true })
+        try {
+          const rows = await supabaseFetch('incidents', {
+            method: 'POST',
+            body: JSON.stringify({
+              vehicle: vehicleId,
+              type: request.type,
+              message: request.message,
+              status: request.status === 'closed' ? 'CLOSED' : 'OPEN',
+              created_at: request.createdAt,
+            }),
+          })
+          if (Array.isArray(rows) && rows[0]?.id) request.id = String(rows[0].id)
+        } catch (error) {
+          console.warn('Supabase request save failed, using memory fallback', error.message)
+        }
       }
 
-      return res.status(200).json({ ok: true, request, persistent: false })
+      return res.status(200).json({ ok: true, request })
     }
 
     if (req.method === 'PATCH') {
@@ -82,30 +76,30 @@ export default async function handler(req, res) {
       const id = String(body.id || '').trim()
       const status = String(body.status || 'closed').trim()
 
-      if (hasSupabase()) {
-        const rows = await supabaseFetch(`incidents?id=eq.${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status }),
-        })
-        const saved = Array.isArray(rows) && rows[0] ? fromIncidentRow(rows[0]) : null
-        return res.status(200).json({ ok: true, request: saved })
+      const item = store.find((request) => request.id === id)
+      if (item) {
+        item.status = status
+        item.closedAt = new Date().toISOString()
       }
 
-      const item = store.find((request) => request.id === id)
+      if (hasSupabase() && /^\d+$/.test(id)) {
+        try {
+          await supabaseFetch(`incidents?id=eq.${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: status === 'closed' ? 'CLOSED' : status.toUpperCase() }),
+          })
+          return res.status(200).json({ ok: true, request: item || { id, status } })
+        } catch (error) {
+          console.warn('Supabase request patch failed, using memory fallback', error.message)
+        }
+      }
+
       if (!item) return res.status(404).json({ ok: false, error: 'Request not found' })
-      item.status = status
-      item.closedAt = new Date().toISOString()
       return res.status(200).json({ ok: true, request: item })
     }
 
     if (req.method === 'DELETE') {
       const id = String(req.query?.id || '').trim()
-      if (hasSupabase()) {
-        const path = id ? `incidents?id=eq.${encodeURIComponent(id)}` : 'incidents?id=gte.0'
-        await supabaseFetch(path, { method: 'DELETE' })
-        return res.status(200).json({ ok: true, deleted: id || 'all' })
-      }
-
       if (!id) {
         store.length = 0
         return res.status(200).json({ ok: true, cleared: true })
@@ -121,14 +115,20 @@ export default async function handler(req, res) {
       const includeClosed = String(req.query?.includeClosed || '') === 'true'
 
       if (hasSupabase()) {
-        const requests = await getIncidents(vehicleId, includeClosed)
-        return res.status(200).json({ ok: true, requests, persistent: true })
+        try {
+          let query = 'incidents?order=created_at.desc&limit=100'
+          if (vehicleId) query = `incidents?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=100`
+          const rows = await supabaseFetch(query)
+          const requests = (Array.isArray(rows) ? rows : [])
+            .map(fromDbIncident)
+            .filter((item) => includeClosed || item.status !== 'closed')
+          return res.status(200).json({ ok: true, requests })
+        } catch (error) {
+          console.warn('Supabase request read failed, using memory fallback', error.message)
+        }
       }
 
-      const requests = (vehicleId ? store.filter((item) => cleanVehicleId(item.fleetNo) === vehicleId) : store)
-        .filter((item) => includeClosed || item.status !== 'closed')
-
-      return res.status(200).json({ ok: true, requests, persistent: false })
+      return res.status(200).json({ ok: true, requests: memoryRequests(vehicleId, includeClosed) })
     }
 
     return res.status(405).json({ ok: false, error: 'Method not allowed' })

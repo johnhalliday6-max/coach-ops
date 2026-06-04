@@ -61,6 +61,68 @@ function mph(speedMps) {
   return Math.max(0, Math.round(Number(speedMps) * 2.23694));
 }
 
+
+function metresBetween(a, b) {
+  if (!a || !b) return Infinity;
+  const lat1 = Number(a.lat ?? a[0]);
+  const lng1 = Number(a.lng ?? a[1]);
+  const lat2 = Number(b.lat ?? b[0]);
+  const lng2 = Number(b.lng ?? b[1]);
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return Infinity;
+  const R = 6371000;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function nearestRouteIndex(position, geometry) {
+  if (!position || !Array.isArray(geometry) || geometry.length === 0) return 0;
+  let bestIndex = 0;
+  let bestDistance = Infinity;
+  geometry.forEach((point, index) => {
+    const distance = metresBetween(position, point);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
+
+function LerpVehicle({ target, setDisplayVehicle }) {
+  const previous = useRef(null);
+
+  useEffect(() => {
+    if (!target?.lat || !target?.lng) return undefined;
+
+    const from = previous.current || target;
+    const to = target;
+    previous.current = target;
+    const start = performance.now();
+    const duration = 1200;
+    let frame;
+
+    const animate = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = t * (2 - t);
+      setDisplayVehicle({
+        ...to,
+        lat: Number(from.lat) + (Number(to.lat) - Number(from.lat)) * eased,
+        lng: Number(from.lng) + (Number(to.lng) - Number(from.lng)) * eased,
+      });
+      if (t < 1) frame = requestAnimationFrame(animate);
+    };
+
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [target, setDisplayVehicle]);
+
+  return null;
+}
+
+
 export default function RouteMap({
   height = "700px",
   fleetNo = "23031",
@@ -73,15 +135,16 @@ export default function RouteMap({
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
+  const [displayVehicle, setDisplayVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
 
   const coachIcon = useMemo(
     () =>
       L.divIcon({
         className: "coach-live-marker",
-        html: `<div class="coach-live-label"><span>🚌</span><strong>${fleetNo}</strong></div>`,
-        iconSize: [110, 36],
-        iconAnchor: [55, 18],
+        html: `<div class="coach-live-label compact"><span>▲</span><strong>${fleetNo}</strong></div>`,
+        iconSize: [62, 30],
+        iconAnchor: [31, 15],
       }),
     [fleetNo],
   );
@@ -143,15 +206,18 @@ export default function RouteMap({
     };
   }, [fleetNo]);
 
+  const liveVehicle = displayVehicle || trackedVehicle;
   const coachPosition =
-    trackedVehicle?.lat && trackedVehicle?.lng
-      ? [trackedVehicle.lat, trackedVehicle.lng]
+    liveVehicle?.lat && liveVehicle?.lng
+      ? [liveVehicle.lat, liveVehicle.lng]
       : plannedRoute?.start
         ? [plannedRoute.start.lat, plannedRoute.start.lng]
         : [54.4863, -0.6133];
 
-  const speed = mph(trackedVehicle?.speedMps);
-  const activeRouteLine = plannedRoute?.geometry?.length > 1 ? plannedRoute.geometry : [];
+  const speed = mph(liveVehicle?.speedMps);
+  const rawRouteLine = plannedRoute?.geometry?.length > 1 ? plannedRoute.geometry : [];
+  const trimIndex = navigationMode && liveVehicle ? Math.max(0, nearestRouteIndex(liveVehicle, rawRouteLine) - 2) : 0;
+  const activeRouteLine = rawRouteLine.slice(trimIndex);
   const routeId = plannedRoute?.updatedAt || `${activeRouteLine.length}-${plannedRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;
   void showDefaultRoute;
@@ -168,6 +234,8 @@ export default function RouteMap({
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+
+      <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />
 
       <FitMapToRoute
         positions={activeRouteLine}
@@ -217,10 +285,10 @@ export default function RouteMap({
       <Marker position={coachPosition} icon={coachIcon}>
         <Popup>
           <strong>{fleetNo}</strong><br />
-          Reg: {trackedVehicle?.reg || reg}<br />
-          {trackedVehicle ? "Live phone GPS" : "Waiting for live GPS"}
+          Reg: {liveVehicle?.reg || reg}<br />
+          {liveVehicle ? "Live phone GPS" : "Waiting for live GPS"}
           {speed != null && (<><br />Current speed: {speed} mph</>)}
-          {trackedVehicle?.accuracy && (<><br />Accuracy: ±{Math.round(trackedVehicle.accuracy)}m</>)}
+          {liveVehicle?.accuracy && (<><br />Accuracy: ±{Math.round(liveVehicle.accuracy)}m</>)}
         </Popup>
       </Marker>
 

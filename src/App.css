@@ -1298,8 +1298,64 @@ body {
   }
 }
 
-.secondary-route-button {
-  background: #334155 !important;
-  color: #ffffff !important;
-  margin-top: 10px;
+/* Road-test navigation refinements */
+.coach-live-label.compact {
+  min-width: 54px;
+  height: 28px;
+  padding: 0 7px;
+  border-width: 2px;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.coach-live-label.compact span {
+  color: #20d86b;
+  font-size: 13px;
+  transform: rotate(0deg);
+}
+
+.satnav-instruction-card {
+  grid-template-columns: 82px 1fr;
+  padding: 9px 10px;
+}
+
+.satnav-distance {
+  padding: 10px 6px;
+  font-size: 21px;
+}
+
+.satnav-instruction-card h1 {
+  font-size: clamp(18px, 4vw, 32px);
+}
+
+.satnav-instruction-card p {
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.satnav-eta-strip {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 98px;
+  z-index: 1200;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.satnav-eta-strip span {
+  background: rgba(6, 16, 29, 0.88);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  color: #9fb3c8;
+  padding: 7px 9px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.satnav-eta-strip strong {
+  color: white;
+  display: block;
+  font-size: 15px;
 }
