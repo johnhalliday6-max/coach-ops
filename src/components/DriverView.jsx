@@ -295,6 +295,8 @@ export default function DriverView({ selectedFleet }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          fleetNo: vehicle.fleetNo,
+          reg: vehicle.reg,
           startLat: lastPosition.lat,
           startLng: lastPosition.lng,
           destination,
@@ -311,7 +313,7 @@ export default function DriverView({ selectedFleet }) {
 
       const route = routeData.route;
 
-      await fetch("/api/routes", {
+      const saveResponse = await fetch("/api/routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -324,9 +326,19 @@ export default function DriverView({ selectedFleet }) {
         }),
       });
 
+      const saveData = await saveResponse.json().catch(() => null);
+      if (!saveResponse.ok || !saveData?.ok) {
+        setRouteStatus(saveData?.details || saveData?.error || "Route built but failed to save");
+        return;
+      }
+
       setRouteSummary(route);
       setActiveStepIndex(0);
-      setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
+      setRouteStatus(
+        saveData?.supabase?.saved === false
+          ? `Route live locally but Supabase did not save: ${saveData.supabase.error || saveData.supabase.reason || "unknown"}`
+          : `Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`
+      );
       setLastAction(`Navigation mode active for ${vehicle.fleetNo}`);
       setNavMode(true);
       requestWakeLock();
