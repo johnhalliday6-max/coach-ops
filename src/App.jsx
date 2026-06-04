@@ -8,10 +8,12 @@ import { depots } from "./data/depots";
 import RouteMap from "./components/RouteMap";
 import HighwaysLive from "./components/HighwaysLive";
 import DriverView from "./components/DriverView";
+import OfficeRouteTools from "./components/OfficeRouteTools";
 
 function App() {
   const [selectedFleet, setSelectedFleet] = useState(fleetData[0]);
   const [search, setSearch] = useState("");
+  const [operatorFilter, setOperatorFilter] = useState("All");
   const isDriverOnly =
     window.location.pathname === "/driver" ||
     new URLSearchParams(window.location.search).get("mode") === "driver";
@@ -83,10 +85,13 @@ function App() {
     }
   };
 
+  const operatorCategories = ["All", ...Array.from(new Set(fleetData.map((vehicle) => vehicle.category || vehicle.operator))).sort()];
+
   const filteredFleet = fleetData.filter((vehicle) => {
     const text =
-      `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.depot} ${vehicle.status}`.toLowerCase();
-    return text.includes(search.toLowerCase());
+      `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.category || ""} ${vehicle.depot} ${vehicle.status}`.toLowerCase();
+    const operatorMatch = operatorFilter === "All" || (vehicle.category || vehicle.operator) === operatorFilter;
+    return operatorMatch && text.includes(search.toLowerCase());
   });
 
   const getStatusIcon = (status) => {
@@ -222,6 +227,15 @@ function App() {
             <section className="layout">
               <div className="fleet-panel">
                 <h4>SELECT FLEET</h4>
+                <select
+                  className="operator-filter"
+                  value={operatorFilter}
+                  onChange={(event) => setOperatorFilter(event.target.value)}
+                >
+                  {operatorCategories.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
 
                 {filteredFleet.map((vehicle) => (
                   <div
@@ -259,18 +273,7 @@ function App() {
               </div>
 
               <div className="tools-panel">
-                <h3>Route Tools</h3>
-                <button>📍 Add Waypoint</button>
-                <button>🚫 Draw Avoid Area</button>
-                <button>✏️ Edit Waypoint</button>
-                <button>↕ Reorder</button>
-                <button>🗑 Remove</button>
-
-                <h3>Vehicle Check</h3>
-                <p>✅ Height {selectedFleet.height}</p>
-                <p>✅ Width {selectedFleet.width}</p>
-                <p>✅ Length {selectedFleet.length}</p>
-                <p>✅ Weight {selectedFleet.weight}</p>
+                <OfficeRouteTools selectedFleet={selectedFleet} />
               </div>
             </section>
 
@@ -285,22 +288,19 @@ function App() {
               </div>
 
               <div className="card route-builder">
-                <h3>Route Builder</h3>
-                <p>Start — York Racecourse</p>
-                <p>1 — Peterborough Services</p>
-                <p>2 — A14 Junction 10</p>
-                <p>3 — Cambridge Services</p>
-                <p>End — London Victoria</p>
-                <button>+ Add Waypoint</button>
+                <h3>Office Control</h3>
+                <p><strong>Selected:</strong> {selectedFleet.fleetNo} / {selectedFleet.reg}</p>
+                <p><strong>Operator:</strong> {selectedFleet.operator}</p>
+                <p><strong>Depot:</strong> {selectedFleet.depot}</p>
+                <p>Use the Route Tools panel to calculate, clear or push a route.</p>
               </div>
 
               <div className="card route-summary">
-                <h3>Route Summary</h3>
-                <p>✅ Avoids low bridges</p>
-                <p>✅ Avoids weight limits</p>
-                <p>✅ Avoids restricted roads</p>
-                <p>✅ Vehicle safe for {selectedFleet.fleetNo}</p>
-                <button onClick={sendOfficeRoutePush}>Push Route To Driver</button>
+                <h3>Coach Safety Layer</h3>
+                <p>✅ Vehicle dimensions attached</p>
+                <p>✅ Valhalla truck/coach profile used</p>
+                <p>✅ National Highways overlay live</p>
+                <p>⚠ Low bridge/weight restriction database pending</p>
               </div>
             </section>
           </>
@@ -319,6 +319,9 @@ function App() {
                   </p>
                   <p>
                     <strong>Operator:</strong> {vehicle.operator}
+                  </p>
+                  <p>
+                    <strong>Category:</strong> {vehicle.category || vehicle.operator}
                   </p>
                   <p>
                     <strong>Depot:</strong> {vehicle.depot}

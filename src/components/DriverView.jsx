@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import RouteMap from "./RouteMap";
 import DriverIntel from "./DriverIntel";
 import { fleetData } from "../data/fleetData";
+import PlaceSearchBox from "./PlaceSearchBox";
 
 
 function metresBetween(a, b) {
@@ -72,66 +73,6 @@ function formatDistance(step) {
   return `${step.distanceMiles || "--"} mi`;
 }
 
-function SearchBox({ label, value, setValue, placeholder }) {
-  const [suggestions, setSuggestions] = useState([]);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const query = value.trim();
-    if (query.length < 3) {
-      setSuggestions([]);
-      return undefined;
-    }
-
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      fetch(`/api/place-search?q=${encodeURIComponent(query)}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (!cancelled && data?.ok) {
-            setSuggestions(data.results || []);
-            setOpen(true);
-          }
-        })
-        .catch((err) => console.error("Place search failed", err));
-    }, 350);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [value]);
-
-  return (
-    <div className="route-search-field">
-      <label>{label}</label>
-      <input
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
-      />
-      {open && suggestions.length > 0 && (
-        <div className="place-suggestion-list">
-          {suggestions.map((item) => (
-            <button
-              type="button"
-              key={`${item.label}-${item.lat}-${item.lng}`}
-              onClick={() => {
-                setValue(item.label);
-                setOpen(false);
-              }}
-            >
-              <strong>{item.shortLabel}</strong>
-              <small>{item.label}</small>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function DriverView({ selectedFleet }) {
   const defaultVehicle =
     fleetData.find((vehicle) => vehicle.reg === "YJ72 CGG") ||
@@ -152,6 +93,7 @@ export default function DriverView({ selectedFleet }) {
   const [routeStatus, setRouteStatus] = useState("Select vehicle to start live GPS");
   const [routeSummary, setRouteSummary] = useState(null);
   const [officeRequests, setOfficeRequests] = useState([]);
+  const [pendingRoutePush, setPendingRoutePush] = useState(null);
   const [navMode, setNavMode] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [offRoute, setOffRoute] = useState(false);
@@ -295,8 +237,6 @@ export default function DriverView({ selectedFleet }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fleetNo: vehicle.fleetNo,
-          reg: vehicle.reg,
           startLat: lastPosition.lat,
           startLng: lastPosition.lng,
           destination,
@@ -313,7 +253,7 @@ export default function DriverView({ selectedFleet }) {
 
       const route = routeData.route;
 
-      const saveResponse = await fetch("/api/routes", {
+      await fetch("/api/routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -326,19 +266,9 @@ export default function DriverView({ selectedFleet }) {
         }),
       });
 
-      const saveData = await saveResponse.json().catch(() => null);
-      if (!saveResponse.ok || !saveData?.ok) {
-        setRouteStatus(saveData?.details || saveData?.error || "Route built but failed to save");
-        return;
-      }
-
       setRouteSummary(route);
       setActiveStepIndex(0);
-      setRouteStatus(
-        saveData?.supabase?.saved === false
-          ? `Route live locally but Supabase did not save: ${saveData.supabase.error || saveData.supabase.reason || "unknown"}`
-          : `Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`
-      );
+      setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
       setLastAction(`Navigation mode active for ${vehicle.fleetNo}`);
       setNavMode(true);
       requestWakeLock();
@@ -350,6 +280,51 @@ export default function DriverView({ selectedFleet }) {
       console.error(error);
       setRouteStatus("Route planner failed");
     }
+  };
+
+
+
+  const applyRouteToDriver = async (route, sourceText = "Route loaded") => {
+    if (!route) return;
+    await fetch("/api/routes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fleetNo: vehicle.fleetNo,
+        reg: vehicle.reg,
+        ...route,
+      }),
+    });
+    setDestination(route.destination || destination);
+    setStops(Array.isArray(route.stops) ? route.stops : []);
+    setRouteSummary(route);
+    setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
+    setLastAction(sourceText);
+    setNavMode(true);
+    requestWakeLock();
+  };
+
+  const acceptRoutePush = async () => {
+    if (!pendingRoutePush?.route) return;
+    await applyRouteToDriver(pendingRoutePush.route, "Office route accepted");
+    await fetch("/api/route-pushes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pendingRoutePush.id, accepted: true }),
+    });
+    await postOfficeRequest("ROUTE_ACCEPTED", `Driver accepted office route to ${pendingRoutePush.route.destination}`);
+    setPendingRoutePush(null);
+  };
+
+  const declineRoutePush = async () => {
+    if (!pendingRoutePush) return;
+    await fetch("/api/route-pushes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pendingRoutePush.id, accepted: true }),
+    });
+    await postOfficeRequest("ROUTE_DECLINED", "Driver declined office route update");
+    setPendingRoutePush(null);
   };
 
   useEffect(() => {
@@ -382,6 +357,30 @@ export default function DriverView({ selectedFleet }) {
       }, 500);
     }
   }, [lastPosition, routeSummary, destination]);
+
+
+  useEffect(() => {
+    if (!vehicleSelected) return undefined;
+    let cancelled = false;
+
+    const loadRoutePush = () => {
+      fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) {
+            setPendingRoutePush(data.push || null);
+          }
+        })
+        .catch((err) => console.error("Driver route push fetch failed", err));
+    };
+
+    loadRoutePush();
+    const timer = window.setInterval(loadRoutePush, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [vehicleSelected, vehicle.fleetNo]);
 
   useEffect(() => {
     if (!vehicleSelected) return undefined;
@@ -455,6 +454,17 @@ export default function DriverView({ selectedFleet }) {
           <button onClick={() => setNavMode(false)}>Route setup</button>
         </section>
 
+        {pendingRoutePush && (
+          <section className="driver-route-update-banner nav-route-push">
+            <div>
+              <strong>New route from Control</strong>
+              <p>{pendingRoutePush.route?.destination || "Updated route"}</p>
+            </div>
+            <button onClick={acceptRoutePush}>Accept</button>
+            <button onClick={declineRoutePush}>Decline</button>
+          </section>
+        )}
+
         <section className="satnav-map-wrap">
           <div className="satnav-instruction-card">
             <div className="satnav-distance">{formatMetres(nextStepDistance ?? nextStep?.distanceMetres)}</div>
@@ -526,6 +536,17 @@ export default function DriverView({ selectedFleet }) {
         <span>{tracking ? "GPS LIVE" : "GPS WAITING"}</span>
       </header>
 
+      {pendingRoutePush && (
+        <section className="driver-route-update-banner">
+          <div>
+            <strong>Route update available from Control</strong>
+            <p>{pendingRoutePush.route?.destination || "Updated route"}</p>
+          </div>
+          <button onClick={acceptRoutePush}>View & Accept</button>
+          <button onClick={declineRoutePush}>Decline</button>
+        </section>
+      )}
+
       <section className="driver-route-planner-card route-card-large">
         <div>
           <h2>Set Route</h2>
@@ -533,8 +554,8 @@ export default function DriverView({ selectedFleet }) {
         </div>
 
         <div className="driver-route-inputs route-inputs-wide">
-          <SearchBox label="Destination" value={destination} setValue={setDestination} placeholder="Example: Scarborough Train Station" />
-          <SearchBox label="Add stop / services" value={stopInput} setValue={setStopInput} placeholder="Type stop then Add..." />
+          <PlaceSearchBox label="Destination" value={destination} setValue={setDestination} placeholder="Scarborough Station, Big Ben, Manchester Airport T2..." />
+          <PlaceSearchBox label="Add stop / services" value={stopInput} setValue={setStopInput} placeholder="Birch Services, Wetherby, Esk Valley Coaches..." />
         </div>
 
         <button type="button" onClick={addStop}>+ Add Stop</button>

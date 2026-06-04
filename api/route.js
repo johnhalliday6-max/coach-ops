@@ -1,24 +1,11 @@
+import { findSavedPlace } from './lib/places.js'
+
 function toMiles(metres) {
   return Math.round((Number(metres || 0) / 1609.344) * 10) / 10
 }
 
 function toMinutes(seconds) {
   return Math.max(1, Math.round(Number(seconds || 0) / 60))
-}
-
-const SAVED_PLACES = [
-  { match: ['esk valley', 'esk valley coaches', 'fairfield way', 'whitby depot'], lat: 54.47587, lng: -0.62705, label: 'Esk Valley Coaches, 4 Fairfield Way, Whitby YO22 4PU', shortLabel: 'Esk Valley Coaches' },
-  { match: ['scarborough train station', 'scarborough railway station', 'scarborough station'], lat: 54.27976, lng: -0.4057, label: 'Scarborough Railway Station, Westborough, Scarborough YO11 1TN', shortLabel: 'Scarborough Railway Station' },
-  { match: ['manchester airport t2', 'manchester terminal 2', 'terminal 2 manchester'], lat: 53.36513, lng: -2.27261, label: 'Manchester Airport Terminal 2', shortLabel: 'Manchester Airport T2' },
-  { match: ['birch services', 'birch motorway services'], lat: 53.55534, lng: -2.22173, label: 'Birch Services M62', shortLabel: 'Birch Services' },
-  { match: ['york racecourse'], lat: 53.93872, lng: -1.09682, label: 'York Racecourse', shortLabel: 'York Racecourse' },
-  { match: ['victoria coach station', 'london victoria'], lat: 51.49321, lng: -0.14918, label: 'Victoria Coach Station, London', shortLabel: 'Victoria Coach Station' },
-]
-
-function findSavedPlace(query) {
-  const q = String(query || '').trim().toLowerCase()
-  if (!q) return null
-  return SAVED_PLACES.find((place) => place.match.some((term) => q.includes(term))) || null
 }
 
 async function geocode(query) {
@@ -33,6 +20,32 @@ async function geocode(query) {
     `${cleanQuery}, UK`,
     `${cleanQuery}, North Yorkshire, UK`,
   ]
+
+  // Try Photon first because it is often better for landmarks and stations.
+  try {
+    const photonUrl = new URL('https://photon.komoot.io/api/')
+    photonUrl.searchParams.set('q', cleanQuery)
+    photonUrl.searchParams.set('limit', '5')
+    photonUrl.searchParams.set('lang', 'en')
+    const photonResponse = await fetch(photonUrl, { headers: { Accept: 'application/json' } })
+    const photonData = await photonResponse.json()
+    const photonFeature = (Array.isArray(photonData?.features) ? photonData.features : []).find((feature) => {
+      const country = String(feature?.properties?.countrycode || feature?.properties?.country || '').toUpperCase()
+      return !country || country === 'GB' || country === 'UK'
+    })
+    const [lng, lat] = photonFeature?.geometry?.coordinates || []
+    if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+      const props = photonFeature.properties || {}
+      return {
+        lat: Number(lat),
+        lng: Number(lng),
+        label: [props.name, props.street, props.city, props.country].filter(Boolean).join(', ') || cleanQuery,
+        shortLabel: props.name || cleanQuery,
+      }
+    }
+  } catch (error) {
+    console.warn('Photon geocode failed', error.message)
+  }
 
   for (const text of expandedQueries) {
     const url = new URL('https://nominatim.openstreetmap.org/search')
