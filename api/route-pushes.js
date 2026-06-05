@@ -26,6 +26,26 @@ export default async function handler(req, res) {
       if (!vehicleId) return res.status(400).json({ ok: false, error: 'Missing vehicle id' })
       if (!body.route) return res.status(400).json({ ok: false, error: 'Missing route payload' })
 
+      // Only one pending office route push per vehicle.
+      // Older unaccepted pushes were causing drivers to keep seeing stale routes
+      // such as 23031 staying stuck on Manchester Airport T2.
+      for (let i = store.length - 1; i >= 0; i -= 1) {
+        if (cleanVehicleId(store[i]?.fleetNo) === vehicleId && !store[i]?.accepted) {
+          store.splice(i, 1)
+        }
+      }
+
+      if (hasSupabase()) {
+        try {
+          await supabaseFetch(
+            `route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}&accepted=eq.false`,
+            { method: 'DELETE' },
+          )
+        } catch (error) {
+          console.warn('Supabase old route push delete failed, continuing', error.message)
+        }
+      }
+
       const push = {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         fleetNo: vehicleId,
@@ -85,8 +105,12 @@ export default async function handler(req, res) {
 
       if (hasSupabase()) {
         try {
-          let query = 'route_pushes?order=created_at.desc&limit=50'
-          if (vehicleId) query = `route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=50`
+          let query = includeAccepted
+            ? 'route_pushes?order=created_at.desc&limit=50'
+            : 'route_pushes?accepted=eq.false&order=created_at.desc&limit=50'
+          if (vehicleId) query = includeAccepted
+            ? `route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=50`
+            : `route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}&accepted=eq.false&order=created_at.desc&limit=50`
           const rows = await supabaseFetch(query)
           const pushes = (Array.isArray(rows) ? rows : [])
             .map(fromDb)
@@ -101,6 +125,36 @@ export default async function handler(req, res) {
         .filter((push) => (!vehicleId || cleanVehicleId(push.fleetNo) === vehicleId))
         .filter((push) => includeAccepted || !push.accepted)
       return res.status(200).json({ ok: true, push: pushes[0] || null, pushes })
+    }
+
+    if (req.method === 'DELETE') {
+      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const id = String(req.query?.id || '').trim()
+
+      if (id) {
+        const index = store.findIndex((push) => String(push.id) === id)
+        if (index >= 0) store.splice(index, 1)
+        if (hasSupabase() && /^\d+$/.test(id)) {
+          try { await supabaseFetch(`route_pushes?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }) } catch {}
+        }
+        return res.status(200).json({ ok: true, deleted: id })
+      }
+
+      if (vehicleId) {
+        for (let i = store.length - 1; i >= 0; i -= 1) {
+          if (cleanVehicleId(store[i]?.fleetNo) === vehicleId) store.splice(i, 1)
+        }
+        if (hasSupabase()) {
+          try { await supabaseFetch(`route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }) } catch {}
+        }
+        return res.status(200).json({ ok: true, vehicle: vehicleId, cleared: true })
+      }
+
+      store.length = 0
+      if (hasSupabase()) {
+        try { await supabaseFetch('route_pushes?id=gte.0', { method: 'DELETE' }) } catch {}
+      }
+      return res.status(200).json({ ok: true, cleared: true })
     }
 
     return res.status(405).json({ ok: false, error: 'Method not allowed' })

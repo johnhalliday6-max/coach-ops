@@ -174,6 +174,13 @@ export default function DriverView({ selectedFleet }) {
     }
   };
 
+  const clearVehicleRouteState = async () => {
+    await Promise.allSettled([
+      fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }),
+      fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }),
+    ]);
+  };
+
   const notify = (text, type = "INFO") => {
     setLastAction(text);
     postOfficeRequest(type, text);
@@ -270,7 +277,7 @@ export default function DriverView({ selectedFleet }) {
     setRouteSummary(null);
     setActiveStepIndex(0);
     setOffRoute(false);
-    await fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }).catch(() => {});
+    await clearVehicleRouteState();
 
     try {
       const routeResponse = await fetch("/api/route", {
@@ -302,10 +309,12 @@ export default function DriverView({ selectedFleet }) {
           destination,
           waypoint: stops.join(" → "),
           stops,
+          updatedAt: new Date().toISOString(),
           ...route,
         }),
       });
 
+      setPendingRoutePush(null);
       setRouteSummary(route);
       setActiveStepIndex(0);
       setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);

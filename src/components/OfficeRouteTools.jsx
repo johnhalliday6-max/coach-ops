@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PlaceSearchBox from "./PlaceSearchBox";
 
 const DEPOT_STARTS = {
@@ -31,6 +31,22 @@ export default function OfficeRouteTools({ selectedFleet }) {
   const [route, setRoute] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    // Vehicle-specific state. Prevent one coach's route being pushed to another.
+    setDestination("");
+    setStopInput("");
+    setStops([]);
+    setRoute(null);
+    setStatus(`Build a route, then push it to ${selectedFleet.fleetNo} / ${selectedFleet.reg}.`);
+  }, [selectedFleet.fleetNo, selectedFleet.reg]);
+
+  const clearServerVehicleRoute = async () => {
+    await Promise.allSettled([
+      fetch(`/api/routes?vehicle=${encodeURIComponent(selectedFleet.fleetNo)}`, { method: "DELETE" }),
+      fetch(`/api/route-pushes?vehicle=${encodeURIComponent(selectedFleet.fleetNo)}`, { method: "DELETE" }),
+    ]);
+  };
+
   const addStop = () => {
     const value = stopInput.trim();
     if (!value) return;
@@ -45,7 +61,7 @@ export default function OfficeRouteTools({ selectedFleet }) {
     setStopInput("");
     setStatus("Route cleared locally.");
     try {
-      await fetch(`/api/routes?vehicle=${encodeURIComponent(selectedFleet.fleetNo)}`, { method: "DELETE" });
+      await clearServerVehicleRoute();
     } catch (error) {
       console.warn("Could not clear server route", error);
     }
@@ -58,8 +74,9 @@ export default function OfficeRouteTools({ selectedFleet }) {
     }
 
     setBusy(true);
-    setStatus("Building route with live vehicle/depot start...");
+    setStatus(`Building route for ${selectedFleet.fleetNo} from live vehicle/depot start...`);
     try {
+      await clearServerVehicleRoute();
       const start = await getVehicleStart(selectedFleet);
       const response = await fetch("/api/route", {
         method: "POST",
@@ -85,7 +102,11 @@ export default function OfficeRouteTools({ selectedFleet }) {
         ...data.route,
         fleetNo: selectedFleet.fleetNo,
         reg: selectedFleet.reg,
+        destination,
+        stops,
+        waypoint: stops.join(" → "),
         startLabel: start.label,
+        updatedAt: new Date().toISOString(),
       };
 
       await fetch("/api/routes", {
@@ -111,8 +132,9 @@ export default function OfficeRouteTools({ selectedFleet }) {
     if (!built) return;
 
     setBusy(true);
-    setStatus("Pushing route to driver...");
+    setStatus(`Pushing route to ${selectedFleet.fleetNo} / ${selectedFleet.reg}...`);
     try {
+      await fetch(`/api/route-pushes?vehicle=${encodeURIComponent(selectedFleet.fleetNo)}`, { method: "DELETE" }).catch(() => {});
       await fetch("/api/route-pushes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
