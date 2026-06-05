@@ -30,6 +30,30 @@ function distanceToRouteMetres(position, geometry) {
   return best;
 }
 
+function nearestRouteGeometryIndex(position, geometry) {
+  if (!position || !Array.isArray(geometry) || geometry.length === 0) return 0;
+  let bestIndex = 0;
+  let bestDistance = Infinity;
+  geometry.forEach((point, index) => {
+    const d = metresBetween(position, point);
+    if (d < bestDistance) {
+      bestDistance = d;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
+
+function instructionIndexFromRouteProgress(position, route) {
+  const instructions = route?.instructions || [];
+  const geometry = route?.geometry || [];
+  if (!position || instructions.length === 0 || geometry.length === 0) return 0;
+  const shapeIndex = nearestRouteGeometryIndex(position, geometry);
+  const next = instructions.findIndex((step) => Number(step.endShapeIndex ?? step.beginShapeIndex ?? 0) >= shapeIndex + 3);
+  if (next >= 0) return next;
+  return Math.max(0, instructions.length - 1);
+}
+
 function nearestInstructionIndex(position, instructions) {
   if (!position || !Array.isArray(instructions) || instructions.length === 0) return 0;
   let bestIndex = 0;
@@ -113,6 +137,22 @@ export default function DriverView({ selectedFleet }) {
     if (!lastPosition || !nextStep?.location) return null;
     return metresBetween(lastPosition, nextStep.location);
   }, [lastPosition, nextStep]);
+
+  const remainingNav = useMemo(() => {
+    const steps = (routeSummary?.instructions || []).slice(activeStepIndex);
+    if (!steps.length) {
+      return {
+        miles: routeSummary?.distanceMiles || null,
+        minutes: routeSummary?.durationMinutes || null,
+      };
+    }
+    const metres = steps.reduce((sum, step) => sum + Number(step.distanceMetres || 0), 0);
+    const minutes = steps.reduce((sum, step) => sum + Number(step.durationMinutes || 0), 0);
+    return {
+      miles: Math.round((metres / 1609.344) * 10) / 10,
+      minutes: Math.max(1, Math.round(minutes)),
+    };
+  }, [routeSummary, activeStepIndex]);
 
   const postOfficeRequest = async (type, text, source = "driver") => {
     try {
@@ -286,6 +326,7 @@ export default function DriverView({ selectedFleet }) {
 
   const applyRouteToDriver = async (route, sourceText = "Route loaded") => {
     if (!route) return;
+    await fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }).catch(() => {});
     await fetch("/api/routes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -338,7 +379,7 @@ export default function DriverView({ selectedFleet }) {
     if (!lastPosition || !routeSummary) return;
 
     const currentPoint = { lat: lastPosition.lat, lng: lastPosition.lng };
-    const nextIndex = nearestInstructionIndex(currentPoint, routeSummary.instructions || []);
+    const nextIndex = instructionIndexFromRouteProgress(currentPoint, routeSummary);
     setActiveStepIndex((current) => Math.max(current, nextIndex));
 
     const routeDistance = distanceToRouteMetres(currentPoint, routeSummary.geometry || []);
@@ -475,8 +516,8 @@ export default function DriverView({ selectedFleet }) {
           </div>
 
           <div className="satnav-eta-strip">
-            <span>ETA <strong>{etaFromMinutes(routeSummary.durationMinutes)}</strong></span>
-            <span>Remaining <strong>{routeSummary.distanceMiles || "--"} mi</strong></span>
+            <span>ETA <strong>{etaFromMinutes(remainingNav.minutes)}</strong></span>
+            <span>Remaining <strong>{remainingNav.miles || "--"} mi</strong></span>
             <span>Engine <strong>{routeSummary.engine || "route"}</strong></span>
           </div>
 

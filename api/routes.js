@@ -71,6 +71,9 @@ export default async function handler(req, res) {
 
       if (hasSupabase()) {
         try {
+          // Keep one active/latest route per vehicle. Supabase was keeping old routes,
+          // which made driver/office maps show multiple stale routes.
+          await supabaseFetch(`routes?vehicle=eq.${encodeURIComponent(vehicleId)}`, { method: 'DELETE' })
           await supabaseFetch('routes', {
             method: 'POST',
             body: JSON.stringify(toDbRoute(route)),
@@ -109,6 +112,16 @@ export default async function handler(req, res) {
       const vehicleId = cleanVehicleId(req.query?.vehicle)
       if (vehicleId) store.delete(vehicleId)
       else store.clear()
+
+      if (hasSupabase()) {
+        try {
+          const path = vehicleId ? `routes?vehicle=eq.${encodeURIComponent(vehicleId)}` : 'routes?id=gte.0'
+          await supabaseFetch(path, { method: 'DELETE' })
+        } catch (error) {
+          console.warn('Supabase route delete failed, using memory fallback', error.message)
+        }
+      }
+
       return res.status(200).json({ ok: true })
     }
 

@@ -45,41 +45,50 @@ function FitMapToRoute({ routeId, positions, enabled }) {
   return null;
 }
 
-function FollowCoach({ position, enabled, zoom = 17, navigationMode = false }) {
+function FollowCoach({ position, enabled, autoFollow, zoom = 17, navigationMode = false }) {
   const map = useMap();
-  const userMovedRef = useRef(false);
 
   useEffect(() => {
-    const markMoved = () => {
-      if (!navigationMode) userMovedRef.current = true;
-    };
-    map.on("dragstart", markMoved);
-    map.on("zoomstart", markMoved);
-    return () => {
-      map.off("dragstart", markMoved);
-      map.off("zoomstart", markMoved);
-    };
-  }, [map, navigationMode]);
+    if (!enabled || !autoFollow || !position) return;
 
-  useEffect(() => {
-    if (!enabled || !position) return;
-
-    const targetZoom = Math.max(map.getZoom(), zoom);
+    const currentZoom = map.getZoom();
+    const targetZoom = navigationMode ? Math.max(currentZoom, zoom) : Math.max(currentZoom, zoom);
 
     if (navigationMode) {
       const size = map.getSize();
       const projected = map.project(position, targetZoom);
-      // Put the vehicle in the lower third so more of the route ahead is visible.
-      const offsetProjected = projected.subtract([0, size.y * 0.22]);
+      // Keep the coach lower on screen so the road ahead takes most of the display.
+      const offsetProjected = projected.subtract([0, size.y * 0.28]);
       const offsetLatLng = map.unproject(offsetProjected, targetZoom);
-      map.setView(offsetLatLng, targetZoom, { animate: true, duration: 0.65 });
+      map.setView(offsetLatLng, targetZoom, { animate: true, duration: 0.45 });
       return;
     }
 
-    if (!userMovedRef.current) {
-      map.setView(position, targetZoom, { animate: true, duration: 0.65 });
-    }
-  }, [enabled, map, position, zoom, navigationMode]);
+    map.setView(position, targetZoom, { animate: true, duration: 0.45 });
+  }, [enabled, autoFollow, map, position, zoom, navigationMode]);
+
+  return null;
+}
+
+function ManualMapWatcher({ enabled, onManualMove }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const markManual = () => onManualMove?.();
+    map.on("dragstart", markManual);
+    map.on("zoomstart", markManual);
+    map.on("mousedown", markManual);
+    map.on("touchstart", markManual);
+    map.on("wheel", markManual);
+    return () => {
+      map.off("dragstart", markManual);
+      map.off("zoomstart", markManual);
+      map.off("mousedown", markManual);
+      map.off("touchstart", markManual);
+      map.off("wheel", markManual);
+    };
+  }, [enabled, map, onManualMove]);
 
   return null;
 }
@@ -165,6 +174,7 @@ export default function RouteMap({
   const [trackedVehicle, setTrackedVehicle] = useState(null);
   const [displayVehicle, setDisplayVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
+  const [autoFollow, setAutoFollow] = useState(true);
 
   useEffect(() => {
     fetch("/api/highways")
@@ -223,6 +233,10 @@ export default function RouteMap({
     };
   }, [fleetNo]);
 
+  useEffect(() => {
+    if (navigationMode) setAutoFollow(true);
+  }, [navigationMode, plannedRoute?.updatedAt]);
+
   const liveVehicle = displayVehicle || trackedVehicle;
   const heading = Number(liveVehicle?.heading || 0);
   const coachIcon = useMemo(
@@ -252,12 +266,13 @@ export default function RouteMap({
   const center = navigationMode || followCoach ? coachPosition : coachPosition || [52.6, -0.6];
 
   return (
+    <div className={navigationMode ? "route-map-shell navigation" : "route-map-shell"} style={{ height, width: "100%" }}>
     <MapContainer
       className={navigationMode ? "driver-satnav-map" : ""}
       center={center}
       zoom={navigationMode || followCoach ? 16 : 7}
-      style={{ height, width: "100%" }}
-      zoomControl={!navigationMode}
+      style={{ height: "100%", width: "100%" }}
+      zoomControl={true}
     >
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
@@ -271,7 +286,14 @@ export default function RouteMap({
         routeId={routeId}
         enabled={fitRoute && !followCoach && !navigationMode}
       />
-      <FollowCoach position={coachPosition} enabled={followCoach || navigationMode} zoom={navigationMode ? 17 : 15} navigationMode={navigationMode} />
+      <ManualMapWatcher enabled={navigationMode} onManualMove={() => setAutoFollow(false)} />
+      <FollowCoach
+        position={coachPosition}
+        enabled={followCoach || navigationMode}
+        autoFollow={autoFollow}
+        zoom={navigationMode ? 17 : 15}
+        navigationMode={navigationMode}
+      />
 
       {shouldShowRoute && (
         <>
@@ -331,5 +353,14 @@ export default function RouteMap({
         </Marker>
       ))}
     </MapContainer>
+    {navigationMode && !autoFollow && (
+      <button className="map-recenter-button" type="button" onClick={() => setAutoFollow(true)}>
+        ⦿ Re-centre
+      </button>
+    )}
+    {navigationMode && autoFollow && (
+      <div className="map-follow-badge">FOLLOW</div>
+    )}
+    </div>
   );
 }
