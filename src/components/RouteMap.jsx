@@ -296,7 +296,7 @@ export default function RouteMap({
     let cancelled = false;
 
     const loadRoute = () => {
-      fetch(`/api/routes?vehicle=${encodeURIComponent(fleetNo)}`)
+      fetch(`/api/routes?vehicle=${encodeURIComponent(fleetNo)}&_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {

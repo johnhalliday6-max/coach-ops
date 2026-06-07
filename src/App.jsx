@@ -54,27 +54,51 @@ function App() {
     if (isDriverOnly || !selectedFleet?.fleetNo) return undefined;
 
     let cancelled = false;
-    setActiveOfficeRoute((current) => current?.fleetNo === selectedFleet.fleetNo ? current : null);
-    const loadActiveRoute = () => {
-      fetch(`/api/routes?vehicle=${encodeURIComponent(selectedFleet.fleetNo)}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (!cancelled && data?.ok) {
-            if (data.route) setActiveOfficeRoute(data.route);
-            // Do not wipe a visible office route just because a transient
-            // serverless/Supabase read returns null between driver accept/save.
-          }
-        })
-        .catch((err) => console.error("Office active route fetch failed", err));
+    const selectedVehicleId = String(selectedFleet.fleetNo).trim().toUpperCase();
+
+    setActiveOfficeRoute((current) => {
+      const currentVehicleId = String(current?.fleetNo || "").trim().toUpperCase();
+      return currentVehicleId === selectedVehicleId ? current : null;
+    });
+
+    const loadActiveRoute = async () => {
+      const stamp = Date.now();
+      try {
+        const response = await fetch(`/api/routes?vehicle=${encodeURIComponent(selectedVehicleId)}&_=${stamp}`, {
+          cache: "no-store",
+        });
+        const data = await response.json();
+        if (cancelled || !data?.ok) return;
+
+        if (data.route) {
+          setActiveOfficeRoute(data.route);
+          return;
+        }
+
+        // Fallback for driver-created routes: serverless/Supabase can briefly
+        // miss the vehicle-filtered read, so scan the active route list and
+        // pick the route that belongs to the selected coach only.
+        const allResponse = await fetch(`/api/routes?_=${stamp}`, { cache: "no-store" });
+        const allData = await allResponse.json();
+        if (cancelled || !allData?.ok) return;
+        const matchingRoute = (allData.routes || []).find((route) => {
+          const routeFleet = String(route?.fleetNo || route?.vehicle || "").trim().toUpperCase();
+          const routeReg = String(route?.reg || "").trim().toUpperCase();
+          return routeFleet === selectedVehicleId || routeReg === String(selectedFleet.reg || "").trim().toUpperCase();
+        });
+        if (matchingRoute) setActiveOfficeRoute(matchingRoute);
+      } catch (err) {
+        console.error("Office active route fetch failed", err);
+      }
     };
 
     loadActiveRoute();
-    const timer = window.setInterval(loadActiveRoute, 5000);
+    const timer = window.setInterval(loadActiveRoute, 3000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isDriverOnly, selectedFleet?.fleetNo]);
+  }, [isDriverOnly, selectedFleet?.fleetNo, selectedFleet?.reg]);
 
   const sendOfficeRoutePush = async () => {
     try {
