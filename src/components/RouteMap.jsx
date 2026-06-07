@@ -232,8 +232,16 @@ export default function RouteMap({
           Math.max(...lngs) + pad,
           Math.max(...lats) + pad,
         ].map((n) => n.toFixed(5)).join(',');
+        const sampleIndexes = [0, 0.2, 0.4, 0.6, 0.8, 1]
+          .map((ratio) => Math.min(routeLine.length - 1, Math.max(0, Math.round((routeLine.length - 1) * ratio))));
+        const flowPoints = sampleIndexes
+          .map((index) => routeLine[index])
+          .filter(Boolean)
+          .map((point) => `${Number(point[0]).toFixed(5)},${Number(point[1]).toFixed(5)}`)
+          .join(';');
         const flowPart = vehiclePoint ? `&lat=${vehiclePoint[0]}&lng=${vehiclePoint[1]}` : '';
-        url = `/api/tomtom-traffic?bbox=${encodeURIComponent(bbox)}${flowPart}`;
+        const pointsPart = flowPoints ? `&points=${encodeURIComponent(flowPoints)}` : '';
+        url = `/api/tomtom-traffic?bbox=${encodeURIComponent(bbox)}${flowPart}${pointsPart}`;
       }
     } else if (vehiclePoint) {
       url = `/api/tomtom-traffic?lat=${vehiclePoint[0]}&lng=${vehiclePoint[1]}&span=0.5`;

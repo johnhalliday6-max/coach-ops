@@ -34,8 +34,8 @@ function parseIncident(incident, index) {
     else if (Array.isArray(geometry.coordinates[0])) coord = geometry.coordinates[0]
   }
 
-  const lat = numberOrNull(p.latitude) ?? numberOrNull(p.lat) ?? numberOrNull(coord?.[1])
-  const lng = numberOrNull(p.longitude) ?? numberOrNull(p.lon) ?? numberOrNull(p.lng) ?? numberOrNull(coord?.[0])
+  const lat = numberOrNull(p.latitude) ?? numberOrNull(p.lat) ?? numberOrNull(p.y) ?? numberOrNull(p?.p?.y) ?? numberOrNull(coord?.[1])
+  const lng = numberOrNull(p.longitude) ?? numberOrNull(p.lon) ?? numberOrNull(p.lng) ?? numberOrNull(p.x) ?? numberOrNull(p?.p?.x) ?? numberOrNull(coord?.[0])
 
   const iconCategory = p.iconCategory ?? p.category ?? p.type ?? p.incidentType
   const delay = p.delay ?? p.delaySeconds ?? p.delayInSeconds
@@ -64,13 +64,33 @@ function parseIncidents(data) {
     .slice(0, 80)
 }
 
-async function fetchFlow(key, query) {
+function parseFlowPoints(query) {
+  const raw = String(query?.points || '').trim()
+  const points = []
+
+  if (raw) {
+    raw.split(';').forEach((pair) => {
+      const [lat, lng] = pair.split(',').map(numberOrNull)
+      if (Number.isFinite(lat) && Number.isFinite(lng)) points.push({ lat, lng })
+    })
+  }
+
   const lat = numberOrNull(query?.lat)
   const lng = numberOrNull(query?.lng)
-  if (!lat || !lng) return null
+  if (Number.isFinite(lat) && Number.isFinite(lng)) points.unshift({ lat, lng })
 
+  const seen = new Set()
+  return points.filter((point) => {
+    const key = `${point.lat.toFixed(4)},${point.lng.toFixed(4)}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).slice(0, 8)
+}
+
+async function fetchSingleFlow(key, point) {
   const url = new URL('https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json')
-  url.searchParams.set('point', `${lat},${lng}`)
+  url.searchParams.set('point', `${point.lat},${point.lng}`)
   url.searchParams.set('unit', 'MPH')
   url.searchParams.set('key', key)
 
@@ -80,14 +100,38 @@ async function fetchFlow(key, query) {
   const flow = data?.flowSegmentData || null
   if (!flow) return null
 
+  const currentSpeed = numberOrNull(flow.currentSpeed)
+  const freeFlowSpeed = numberOrNull(flow.freeFlowSpeed)
+  const ratio = currentSpeed != null && freeFlowSpeed ? currentSpeed / freeFlowSpeed : 1
+
   return {
-    currentSpeed: flow.currentSpeed ?? null,
-    freeFlowSpeed: flow.freeFlowSpeed ?? null,
+    lat: point.lat,
+    lng: point.lng,
+    currentSpeed,
+    freeFlowSpeed,
     currentTravelTime: flow.currentTravelTime ?? null,
     freeFlowTravelTime: flow.freeFlowTravelTime ?? null,
     confidence: flow.confidence ?? null,
     roadClosure: Boolean(flow.roadClosure),
+    congestionRatio: ratio,
   }
+}
+
+async function fetchFlow(key, query) {
+  const points = parseFlowPoints(query)
+  if (!points.length) return { flow: null, flows: [] }
+
+  const results = await Promise.allSettled(points.map((point) => fetchSingleFlow(key, point)))
+  const flows = results
+    .filter((result) => result.status === 'fulfilled' && result.value)
+    .map((result) => result.value)
+
+  const worst = flows.slice().sort((a, b) => {
+    if (a.roadClosure !== b.roadClosure) return a.roadClosure ? -1 : 1
+    return (a.congestionRatio ?? 1) - (b.congestionRatio ?? 1)
+  })[0] || null
+
+  return { flow: worst, flows }
 }
 
 export default async function handler(req, res) {
@@ -110,6 +154,7 @@ export default async function handler(req, res) {
 
     const incidentData = incidentsResult.status === 'fulfilled' ? incidentsResult.value : null
     const incidents = parseIncidents(incidentData)
+    const flowData = flow.status === 'fulfilled' ? flow.value : { flow: null, flows: [] }
 
     return res.status(200).json({
       ok: true,
@@ -117,7 +162,8 @@ export default async function handler(req, res) {
       bbox,
       count: incidents.length,
       incidents,
-      flow: flow.status === 'fulfilled' ? flow.value : null,
+      flow: flowData.flow || null,
+      flows: flowData.flows || [],
       warning: incidentsResult.status === 'rejected' ? incidentsResult.reason?.message : null,
     })
   } catch (error) {

@@ -37,11 +37,12 @@ function fromDbRoute(row) {
     waypoints: stored.waypoints || row?.stops?.waypoints || [],
     distanceMiles: stored.distanceMiles || row.distance || null,
     durationMinutes: stored.durationMinutes || row.duration || null,
-    updatedAt: row.created_at || stored.updatedAt,
+    updatedAt: stored.updatedAt || row.created_at,
   }
 }
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, max-age=0')
   try {
     if (req.method === 'POST') {
       const body = req.body || {}

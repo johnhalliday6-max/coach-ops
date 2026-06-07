@@ -301,22 +301,29 @@ export default function DriverView({ selectedFleet }) {
 
       const route = routeData.route;
 
-      await fetch("/api/routes", {
+      const activeRoutePayload = {
+        ...route,
+        fleetNo: vehicle.fleetNo,
+        reg: vehicle.reg,
+        destination,
+        waypoint: stops.join(" → "),
+        stops,
+        updatedAt: new Date().toISOString(),
+        source: "driver",
+      };
+
+      const saveResponse = await fetch("/api/routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fleetNo: vehicle.fleetNo,
-          reg: vehicle.reg,
-          destination,
-          waypoint: stops.join(" → "),
-          stops,
-          updatedAt: new Date().toISOString(),
-          ...route,
-        }),
+        body: JSON.stringify(activeRoutePayload),
       });
+      const saveData = await saveResponse.json().catch(() => null);
+      if (!saveResponse.ok || !saveData?.ok) {
+        throw new Error(saveData?.error || "Could not sync route to office");
+      }
 
       setPendingRoutePush(null);
-      setRouteSummary(route);
+      setRouteSummary(saveData.route || activeRoutePayload);
       setActiveStepIndex(0);
       setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
       setLastAction(`Navigation mode active for ${vehicle.fleetNo}`);
@@ -390,7 +397,17 @@ export default function DriverView({ selectedFleet }) {
     let cancelled = false;
 
     const loadFlow = () => {
-      fetch(`/api/tomtom-traffic?lat=${lastPosition.lat}&lng=${lastPosition.lng}&span=0.25`)
+      const routeLine = Array.isArray(routeSummary?.geometry) ? routeSummary.geometry : [];
+      const sampleIndexes = routeLine.length > 1
+        ? [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.min(routeLine.length - 1, Math.max(0, Math.round((routeLine.length - 1) * ratio))))
+        : [];
+      const flowPoints = sampleIndexes
+        .map((index) => routeLine[index])
+        .filter(Boolean)
+        .map((point) => `${Number(point[0]).toFixed(5)},${Number(point[1]).toFixed(5)}`)
+        .join(';');
+      const pointsPart = flowPoints ? `&points=${encodeURIComponent(flowPoints)}` : '';
+      fetch(`/api/tomtom-traffic?lat=${lastPosition.lat}&lng=${lastPosition.lng}&span=0.25${pointsPart}`)
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) setTrafficFlow(data.flow || null);
@@ -404,7 +421,7 @@ export default function DriverView({ selectedFleet }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [lastPosition?.lat, lastPosition?.lng]);
+  }, [lastPosition?.lat, lastPosition?.lng, routeSummary?.updatedAt]);
 
   useEffect(() => {
     if (!lastPosition || !routeSummary) return;
