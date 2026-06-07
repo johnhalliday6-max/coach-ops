@@ -23,7 +23,7 @@ async function getVehicleStart(vehicle) {
   return { ...depotStart, label: `${vehicle.depot || "Depot"} fallback start` };
 }
 
-export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteCleared }) {
+export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteCleared, mapPickMode, setMapPickMode, mapStops = [], setMapStops, mapDestination, setMapDestination }) {
   const [destination, setDestination] = useState("");
   const [stopInput, setStopInput] = useState("");
   const [stops, setStops] = useState([]);
@@ -37,6 +37,9 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
     setStopInput("");
     setStops([]);
     setRoute(null);
+    setMapPickMode?.(null);
+    setMapStops?.([]);
+    setMapDestination?.(null);
     setStatus(`Build a route, then push it to ${selectedFleet.fleetNo} / ${selectedFleet.reg}.`);
   }, [selectedFleet.fleetNo, selectedFleet.reg]);
 
@@ -54,12 +57,19 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
     setStopInput("");
   };
 
+  const removeMapStop = (index) => {
+    setMapStops?.((current) => current.filter((_, i) => i !== index));
+  };
+
   const clearRoute = async () => {
     setRoute(null);
     onRouteCleared?.();
     setDestination("");
     setStops([]);
     setStopInput("");
+    setMapPickMode?.(null);
+    setMapStops?.([]);
+    setMapDestination?.(null);
     setStatus("Route cleared locally.");
     try {
       await clearServerVehicleRoute();
@@ -69,8 +79,8 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
   };
 
   const buildRoute = async () => {
-    if (!destination.trim()) {
-      setStatus("Enter a destination first.");
+    if (!destination.trim() && !mapDestination) {
+      setStatus("Enter a destination first or click a destination on the map.");
       return null;
     }
 
@@ -79,14 +89,17 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
     try {
       await clearServerVehicleRoute();
       const start = await getVehicleStart(selectedFleet);
+      const allStops = [...stops, ...(mapStops || [])];
+      const finalDestination = mapDestination?.label || destination;
       const response = await fetch("/api/route", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           startLat: start.lat,
           startLng: start.lng,
-          destination,
-          stops,
+          destination: finalDestination,
+          destinationPoint: mapDestination || null,
+          stops: allStops,
           height: selectedFleet.height,
           width: selectedFleet.width,
           length: selectedFleet.length,
@@ -103,9 +116,9 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
         ...data.route,
         fleetNo: selectedFleet.fleetNo,
         reg: selectedFleet.reg,
-        destination,
-        stops,
-        waypoint: stops.join(" → "),
+        destination: finalDestination,
+        stops: allStops,
+        waypoint: allStops.map((stop) => typeof stop === "string" ? stop : stop.label).join(" → "),
         startLabel: start.label,
         updatedAt: new Date().toISOString(),
       };
@@ -157,7 +170,7 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
           depot: selectedFleet.depot,
           type: "ROUTE_PUSH",
           source: "office",
-          message: `New route available: ${stops.length ? `${stops.join(" → ")} → ` : ""}${destination}`,
+          message: `New route available: ${built.stops?.length ? `${built.stops.map((stop) => typeof stop === "string" ? stop : stop.label).join(" → ")} → ` : ""}${built.destination}`,
         }),
       });
       onRouteBuilt?.(built);
@@ -198,6 +211,29 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
           ))}
         </div>
       )}
+
+
+      <div className="map-planner-box">
+        <strong>Map planning</strong>
+        <p>Use the office map to place exact pickup points, schools, coach bays or entrances.</p>
+        <div className="route-tool-grid compact-route-grid">
+          <button type="button" onClick={() => setMapPickMode?.(mapPickMode === "stop" ? null : "stop")} className={mapPickMode === "stop" ? "active-tool" : ""}>📍 Next map click = stop</button>
+          <button type="button" onClick={() => setMapPickMode?.(mapPickMode === "destination" ? null : "destination")} className={mapPickMode === "destination" ? "active-tool" : ""}>🎯 Next map click = destination</button>
+        </div>
+        {mapPickMode && <small className="route-status">Now click the map to set a {mapPickMode}.</small>}
+        {mapDestination && (
+          <div className="route-stop-pills office-stops">
+            <span>Destination: {mapDestination.label}<button onClick={() => setMapDestination?.(null)}>×</button></span>
+          </div>
+        )}
+        {mapStops.length > 0 && (
+          <div className="route-stop-pills office-stops">
+            {mapStops.map((stop, index) => (
+              <span key={`${stop.lat}-${stop.lng}-${index}`}>Map stop {index + 1}<button onClick={() => removeMapStop(index)}>×</button></span>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="route-tool-grid">
         <button type="button" onClick={buildRoute} disabled={busy}>🧭 Calculate</button>

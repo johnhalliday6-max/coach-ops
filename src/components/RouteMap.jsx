@@ -6,6 +6,7 @@ import {
   Polyline,
   Popup,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -93,6 +94,21 @@ function ManualMapWatcher({ enabled, onManualMove }) {
   return null;
 }
 
+function MapClickCapture({ enabled, onMapPoint }) {
+  useMapEvents({
+    click(event) {
+      if (!enabled || !onMapPoint) return
+      onMapPoint({
+        lat: event.latlng.lat,
+        lng: event.latlng.lng,
+        label: `Map point ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`,
+        shortLabel: 'Map point',
+      })
+    },
+  })
+  return null
+}
+
 function mph(speedMps) {
   if (speedMps == null || Number.isNaN(Number(speedMps))) return null;
   return Math.max(0, Math.round(Number(speedMps) * 2.23694));
@@ -170,6 +186,9 @@ export default function RouteMap({
   showDefaultRoute = false,
   fitRoute = true,
   routeOverride = null,
+  planningMode = false,
+  onMapPoint = null,
+  manualPoints = [],
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
@@ -282,6 +301,7 @@ export default function RouteMap({
       />
 
       <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />
+      <MapClickCapture enabled={planningMode} onMapPoint={onMapPoint} />
 
       <FitMapToRoute
         positions={activeRouteLine}
@@ -334,6 +354,13 @@ export default function RouteMap({
           <Popup><strong>Destination</strong><br />{visibleRoute.destination}</Popup>
         </Marker>
       )}
+
+
+      {manualPoints.map((point, index) => (
+        <Marker key={`manual-${point.lat}-${point.lng}-${index}`} position={[point.lat, point.lng]} icon={plannedStopIcon}>
+          <Popup><strong>Planned point {index + 1}</strong><br />{point.label}</Popup>
+        </Marker>
+      ))}
 
       <Marker position={coachPosition} icon={coachIcon}>
         <Popup>

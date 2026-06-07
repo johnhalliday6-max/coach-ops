@@ -1651,3 +1651,65 @@ body {
 .driver-satnav-map .leaflet-control-zoom {
   margin-top: 92px;
 }
+
+/* Route library and map planning */
+.map-planner-box {
+  background: #eaf1ff;
+  border: 1px solid #c9dcff;
+  border-radius: 12px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.map-planner-box p {
+  margin: 6px 0 10px;
+  color: #31445d;
+  font-size: 13px;
+}
+
+.compact-route-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.active-tool {
+  background: #20d86b !important;
+  color: #06101d !important;
+}
+
+.saved-route-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.saved-route-card {
+  background: white;
+  border: 1px solid #dce3ef;
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.saved-route-card h3 {
+  margin: 0 0 4px;
+}
+
+.saved-route-card span {
+  color: #52657a;
+  font-weight: bold;
+}
+
+.saved-route-card ol {
+  padding-left: 20px;
+}
+
+.saved-route-card button {
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #1268ff;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
