@@ -121,6 +121,7 @@ export default function DriverView({ selectedFleet }) {
   const [navMode, setNavMode] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [offRoute, setOffRoute] = useState(false);
+  const [trafficFlow, setTrafficFlow] = useState(null);
   const watchId = useRef(null);
   const rerouteLock = useRef(false);
   const wakeLockRef = useRef(null);
