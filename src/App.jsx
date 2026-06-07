@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import logo from "./assets/goahead-logo.png";
 import { fleetData } from "./data/fleetData";
@@ -24,6 +24,8 @@ function App() {
   );
   const [officeRequests, setOfficeRequests] = useState([]);
   const [activeOfficeRoute, setActiveOfficeRoute] = useState(null);
+  const [officeRouteCache, setOfficeRouteCache] = useState({});
+  const officeRouteCacheRef = useRef({});
 
   useEffect(() => {
     if (isDriverOnly) return undefined;
@@ -56,10 +58,10 @@ function App() {
     let cancelled = false;
     const selectedVehicleId = String(selectedFleet.fleetNo).trim().toUpperCase();
 
-    setActiveOfficeRoute((current) => {
-      const currentVehicleId = String(current?.fleetNo || "").trim().toUpperCase();
-      return currentVehicleId === selectedVehicleId ? current : null;
-    });
+    // Keep one cached route per coach. Switching vehicles in the office must not
+    // clear another coach's active route; it should show again instantly when
+    // switching back, even if the next network poll is slow.
+    setActiveOfficeRoute(officeRouteCacheRef.current[selectedVehicleId] || null);
 
     const loadActiveRoute = async () => {
       const stamp = Date.now();
@@ -71,6 +73,8 @@ function App() {
         if (cancelled || !data?.ok) return;
 
         if (data.route) {
+          officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [selectedVehicleId]: data.route };
+          setOfficeRouteCache(officeRouteCacheRef.current);
           setActiveOfficeRoute(data.route);
           return;
         }
@@ -86,7 +90,11 @@ function App() {
           const routeReg = String(route?.reg || "").trim().toUpperCase();
           return routeFleet === selectedVehicleId || routeReg === String(selectedFleet.reg || "").trim().toUpperCase();
         });
-        if (matchingRoute) setActiveOfficeRoute(matchingRoute);
+        if (matchingRoute) {
+          officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [selectedVehicleId]: matchingRoute };
+          setOfficeRouteCache(officeRouteCacheRef.current);
+          setActiveOfficeRoute(matchingRoute);
+        }
       } catch (err) {
         console.error("Office active route fetch failed", err);
       }
@@ -328,8 +336,20 @@ function App() {
               <div className="tools-panel">
                 <OfficeRouteTools
                   selectedFleet={selectedFleet}
-                  onRouteBuilt={setActiveOfficeRoute}
-                  onRouteCleared={() => setActiveOfficeRoute(null)}
+                  onRouteBuilt={(route) => {
+                    const vehicleId = String(route?.fleetNo || selectedFleet.fleetNo || "").trim().toUpperCase();
+                    officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [vehicleId]: route };
+                    setOfficeRouteCache(officeRouteCacheRef.current);
+                    setActiveOfficeRoute(route);
+                  }}
+                  onRouteCleared={() => {
+                    const vehicleId = String(selectedFleet.fleetNo || "").trim().toUpperCase();
+                    const next = { ...officeRouteCacheRef.current };
+                    delete next[vehicleId];
+                    officeRouteCacheRef.current = next;
+                    setOfficeRouteCache(next);
+                    setActiveOfficeRoute(null);
+                  }}
                 />
               </div>
             </section>
@@ -490,7 +510,12 @@ function App() {
         {activePage === "routes" && (
           <RouteLibraryPage
             selectedFleet={selectedFleet}
-            onRouteBuilt={setActiveOfficeRoute}
+            onRouteBuilt={(route) => {
+              const vehicleId = String(route?.fleetNo || selectedFleet.fleetNo || "").trim().toUpperCase();
+              officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [vehicleId]: route };
+              setOfficeRouteCache(officeRouteCacheRef.current);
+              setActiveOfficeRoute(route);
+            }}
             onSelectDashboard={() => setActivePage("dashboard")}
           />
         )}
