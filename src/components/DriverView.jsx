@@ -119,6 +119,7 @@ export default function DriverView({ selectedFleet }) {
   const [vehicle, setVehicle] = useState(defaultVehicle);
   const [vehicleSelected, setVehicleSelected] = useState(false);
   const [driverProfile, setDriverProfile] = useState(null);
+  const [selectedCompany, setSelectedCompany] = useState("Esk Valley Coaches");
   const [employeeIdInput, setEmployeeIdInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [passengers, setPassengers] = useState(34);
@@ -220,8 +221,8 @@ export default function DriverView({ selectedFleet }) {
     setNavMode(false);
     setDestination("");
     setStops([]);
-    setRouteStatus(`Logged in as ${profile.name}. Vehicle ${assignedVehicle.fleetNo} assigned.`);
-    setLastAction(`Driver logged in: ${profile.name} · ${assignedVehicle.fleetNo} / ${assignedVehicle.reg}`);
+    setRouteStatus(`Logged in. Vehicle ${assignedVehicle.fleetNo} assigned.`);
+    setLastAction(`Driver logged in · ${assignedVehicle.fleetNo} / ${assignedVehicle.reg}`);
     window.setTimeout(startTracking, 0);
   };
 
@@ -619,11 +620,6 @@ export default function DriverView({ selectedFleet }) {
             Log in
           </button>
 
-          <div className="driver-login-testers">
-            <strong>Test logins</strong>
-            <button type="button" onClick={() => setEmployeeIdInput("1600026")}>John · 1600026</button>
-            <button type="button" onClick={() => setEmployeeIdInput("06032013")}>Anna · 06032013</button>
-          </div>
         </section>
       </main>
     );
@@ -701,6 +697,12 @@ export default function DriverView({ selectedFleet }) {
     );
   }
 
+  const companies = useMemo(() => [...new Set(fleetData.map((item) => item.category || item.operator))], []);
+  const companyVehicles = useMemo(
+    () => fleetData.filter((item) => (item.category || item.operator) === selectedCompany),
+    [selectedCompany],
+  );
+
   const latestOfficeMessages = officeRequests.filter((item) => item.source === "office");
 
   return (
@@ -708,7 +710,7 @@ export default function DriverView({ selectedFleet }) {
       <header className="driver-only-header">
         <div>
           <h1>Coach Ops Driver</h1>
-          <p>{driverProfile?.name} · {driverProfile?.employeeId} · {vehicle.fleetNo} · {vehicle.reg}</p>
+          <p>Logged in · {vehicle.fleetNo} · {vehicle.reg}</p>
         </div>
         <span>{tracking ? "GPS LIVE" : "GPS WAITING"}</span>
       </header>
@@ -719,10 +721,22 @@ export default function DriverView({ selectedFleet }) {
           <h2>{vehicle.fleetNo} · {vehicle.reg}</h2>
           <p>{vehicle.operator} · {vehicle.depot}</p>
         </div>
-        <details>
+        <details className="driver-change-vehicle-panel">
           <summary>Change vehicle</summary>
+          <div className="driver-company-tabs">
+            {companies.map((company) => (
+              <button
+                key={company}
+                type="button"
+                className={company === selectedCompany ? "active" : ""}
+                onClick={() => setSelectedCompany(company)}
+              >
+                {company}
+              </button>
+            ))}
+          </div>
           <div className="driver-vehicle-list compact">
-            {fleetData.map((item) => (
+            {companyVehicles.map((item) => (
               <button
                 key={item.fleetNo}
                 className={item.fleetNo === vehicle.fleetNo ? "vehicle-select active" : "vehicle-select"}

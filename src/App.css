@@ -2095,3 +2095,98 @@ body {
     min-width: 0;
   }
 }
+
+
+/* V3.8 driver tablet polish */
+.driver-only-page,
+.driver-select-page,
+.satnav-page {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.driver-only-page button,
+.driver-select-page button,
+.driver-only-page input,
+.driver-select-page input,
+.driver-only-page textarea {
+  font-family: inherit;
+}
+
+.driver-login-testers {
+  display: none !important;
+}
+
+.driver-current-vehicle-card details.driver-change-vehicle-panel {
+  min-width: 340px;
+}
+
+.driver-company-tabs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.driver-company-tabs button {
+  border: 1px solid #dce3ef;
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: white;
+  color: #0b1220;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.driver-company-tabs button.active {
+  background: #1268ff;
+  border-color: #1268ff;
+  color: white;
+}
+
+.driver-change-vehicle-panel .driver-vehicle-list.compact {
+  max-height: 420px;
+}
+
+@media (max-width: 700px) {
+  .driver-only-page {
+    padding: 12px;
+  }
+
+  .driver-only-header {
+    border-radius: 16px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .driver-only-header h1 {
+    font-size: 28px;
+  }
+
+  .driver-current-vehicle-card,
+  .driver-route-planner-card,
+  .driver-card,
+  .driver-only-map,
+  .driver-intel-card {
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .driver-current-vehicle-card details.driver-change-vehicle-panel {
+    min-width: 0;
+  }
+
+  .driver-route-inputs input {
+    min-width: 0;
+    font-size: 16px;
+  }
+
+  .driver-route-planner-card button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .driver-only-map .leaflet-container {
+    min-height: 340px;
+  }
+}
