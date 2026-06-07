@@ -176,11 +176,13 @@ export default function DriverView({ selectedFleet }) {
     }
   };
 
-  const clearVehicleRouteState = async () => {
-    await Promise.allSettled([
-      fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }),
-      fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }),
-    ]);
+  const clearLocalRouteState = () => {
+    // Local screen reset only. Do not delete server routes during normal planning;
+    // that caused multi-coach tests to look like routes were cancelling each other.
+    setRouteSummary(null);
+    setPendingRoutePush(null);
+    setActiveStepIndex(0);
+    setOffRoute(false);
   };
 
   const notify = (text, type = "INFO") => {
@@ -276,10 +278,7 @@ export default function DriverView({ selectedFleet }) {
     }
 
     setRouteStatus("Building route from your live GPS...");
-    setRouteSummary(null);
-    setActiveStepIndex(0);
-    setOffRoute(false);
-    await clearVehicleRouteState();
+    clearLocalRouteState();
 
     try {
       const routeResponse = await fetch("/api/route", {
@@ -344,7 +343,6 @@ export default function DriverView({ selectedFleet }) {
 
   const applyRouteToDriver = async (route, sourceText = "Route loaded") => {
     if (!route) return;
-    await fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }).catch(() => {});
     const routeForVehicle = {
       ...route,
       fleetNo: vehicle.fleetNo,

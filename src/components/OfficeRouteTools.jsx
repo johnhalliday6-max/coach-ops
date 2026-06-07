@@ -63,7 +63,7 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
     setBusy(true);
     setStatus(`Building route for ${selectedFleet.fleetNo} from live vehicle/depot start...`);
     try {
-      await clearVehicleRoute(selectedFleet);
+      // Keep existing route live until the new route is successfully built and saved.
       const built = await buildVehicleRoute(selectedFleet, { destination, stops });
       await saveActiveRoute(built);
 

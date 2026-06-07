@@ -111,6 +111,14 @@ export default async function handler(req, res) {
 
     if (req.method === 'DELETE') {
       const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const allowAll = String(req.query?.allowAll || '') === 'true'
+
+      // Safety guard for multi-coach operation: a missing vehicle parameter must
+      // never wipe every active route. 200+ coaches can be live at once.
+      if (!vehicleId && !allowAll) {
+        return res.status(400).json({ ok: false, error: 'Missing vehicle id for route delete' })
+      }
+
       if (vehicleId) store.delete(vehicleId)
       else store.clear()
 
@@ -123,7 +131,7 @@ export default async function handler(req, res) {
         }
       }
 
-      return res.status(200).json({ ok: true })
+      return res.status(200).json({ ok: true, vehicle: vehicleId || 'ALL' })
     }
 
     return res.status(405).json({ ok: false, error: 'Method not allowed' })

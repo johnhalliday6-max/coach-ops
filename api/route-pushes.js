@@ -150,6 +150,12 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, vehicle: vehicleId, cleared: true })
       }
 
+      // Safety guard: never clear every coach's pending push by accident.
+      // Use ?allowAll=true only for a deliberate admin reset.
+      if (String(req.query?.allowAll || '') !== 'true') {
+        return res.status(400).json({ ok: false, error: 'Missing vehicle id for route push delete' })
+      }
+
       store.length = 0
       if (hasSupabase()) {
         try { await supabaseFetch('route_pushes?id=gte.0', { method: 'DELETE' }) } catch {}

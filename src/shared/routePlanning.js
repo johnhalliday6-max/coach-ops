@@ -21,9 +21,13 @@ export async function getVehicleStart(vehicle) {
 }
 
 export async function clearVehicleRoute(vehicle) {
+  // Explicit clear button only. Never call this as part of normal build/push,
+  // otherwise one route can briefly vanish while another coach is being operated.
+  const vehicleId = vehicle?.fleetNo;
+  if (!vehicleId) throw new Error('Missing vehicle for clear');
   await Promise.allSettled([
-    fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: 'DELETE' }),
-    fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: 'DELETE' }),
+    fetch(`/api/routes?vehicle=${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }),
+    fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }),
   ]);
 }
 
@@ -81,7 +85,7 @@ export async function saveActiveRoute(route) {
 }
 
 export async function pushRouteToDriver(vehicle, route) {
-  await fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: 'DELETE' }).catch(() => {});
+  // POST /api/route-pushes replaces pending pushes for this vehicle only.
   await fetch('/api/route-pushes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
