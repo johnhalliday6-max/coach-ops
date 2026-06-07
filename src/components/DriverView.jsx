@@ -439,11 +439,20 @@ export default function DriverView({ selectedFleet }) {
       fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`)
         .then((res) => res.json())
         .then((data) => {
-          if (!cancelled && data?.ok && data.route && !routeSummary) {
-            setRouteSummary(data.route);
-            setDestination(data.route.destination || '');
-            setStops(Array.isArray(data.route.stops) ? data.route.stops : []);
-            setRouteStatus(`Assigned route loaded: ${data.route.destination || 'route'}`);
+          if (cancelled || !data?.ok || !data.route) return;
+
+          const incomingRoute = data.route;
+          const incomingStamp = String(incomingRoute.updatedAt || '');
+          const currentStamp = String(routeSummary?.updatedAt || '');
+          const routeChanged = !routeSummary || incomingStamp !== currentStamp || incomingRoute.destination !== routeSummary.destination;
+
+          if (routeChanged) {
+            setRouteSummary(incomingRoute);
+            setDestination(incomingRoute.destination || '');
+            setStops(Array.isArray(incomingRoute.stops) ? incomingRoute.stops : []);
+            setActiveStepIndex(0);
+            setRouteStatus(`Assigned route loaded: ${incomingRoute.destination || 'route'}`);
+            setLastAction(`Route updated for ${vehicle.fleetNo}`);
           }
         })
         .catch((err) => console.error('Driver active route fetch failed', err));
@@ -591,9 +600,9 @@ export default function DriverView({ selectedFleet }) {
 
           <div className="satnav-speed-panel">
             <div className="speed-limit-circle">
-              <span>ROAD</span>
+              <span>TRAFFIC</span>
               <strong>{trafficFlow?.currentSpeed != null ? Math.round(Number(trafficFlow.currentSpeed)) : '--'}</strong>
-              <small>{trafficFlow?.freeFlowSpeed != null ? `free ${Math.round(Number(trafficFlow.freeFlowSpeed))}` : 'TomTom'}</small>
+              <small>{trafficFlow?.freeFlowSpeed != null ? `free ${Math.round(Number(trafficFlow.freeFlowSpeed))} mph` : 'TomTom flow'}</small>
             </div>
             <div className="current-speed-box">
               <span>YOU</span>

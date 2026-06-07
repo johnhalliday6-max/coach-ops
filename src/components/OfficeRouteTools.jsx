@@ -21,11 +21,23 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
   }, [selectedFleet.fleetNo, selectedFleet.reg]);
 
 
+  const setDestinationAndResetRoute = (value) => {
+    setDestination(value);
+    setRoute(null);
+    if (value.trim()) setStatus("Destination changed. Calculate or Push to build the new route.");
+  };
+
+  const setStopInputAndResetRoute = (value) => {
+    setStopInput(value);
+  };
+
   const addStop = () => {
     const value = stopInput.trim();
     if (!value) return;
     setStops((current) => [...current, value]);
+    setRoute(null);
     setStopInput("");
+    setStatus("Stop changed. Calculate or Push to build the new route.");
   };
 
   const clearRoute = async () => {
@@ -96,14 +108,14 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
         compact
         label="Destination"
         value={destination}
-        setValue={setDestination}
+        setValue={setDestinationAndResetRoute}
         placeholder="Scarborough Station, Big Ben, Manchester Airport T2..."
       />
       <PlaceSearchBox
         compact
         label="Stop / services"
         value={stopInput}
-        setValue={setStopInput}
+        setValue={setStopInputAndResetRoute}
         placeholder="Birch Services, Wetherby Services..."
       />
 
@@ -111,7 +123,7 @@ export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteC
       {stops.length > 0 && (
         <div className="route-stop-pills office-stops">
           {stops.map((stop, index) => (
-            <span key={`${stop}-${index}`}>{stop}<button onClick={() => setStops((current) => current.filter((_, i) => i !== index))}>×</button></span>
+            <span key={`${stop}-${index}`}>{stop}<button onClick={() => { setStops((current) => current.filter((_, i) => i !== index)); setRoute(null); setStatus("Stop removed. Calculate or Push to build the new route."); }}>×</button></span>
           ))}
         </div>
       )}

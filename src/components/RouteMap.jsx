@@ -100,6 +100,24 @@ function ManualMapWatcher({ enabled, onManualMove }) {
   return null;
 }
 
+
+function trafficRatio(flow) {
+  const current = Number(flow?.currentSpeed);
+  const free = Number(flow?.freeFlowSpeed);
+  if (!Number.isFinite(current) || !Number.isFinite(free) || free <= 0) return null;
+  return current / free;
+}
+
+function trafficStatus(flow) {
+  if (!flow) return { label: "WAITING", detail: "TomTom", color: "#64748b" };
+  if (flow.roadClosure) return { label: "CLOSED", detail: "road closed", color: "#ef4444" };
+  const ratio = trafficRatio(flow);
+  if (ratio == null) return { label: "LIVE", detail: "TomTom", color: "#64748b" };
+  if (ratio < 0.55) return { label: "HEAVY", detail: "slow traffic", color: "#ef4444" };
+  if (ratio < 0.82) return { label: "SLOW", detail: "delays", color: "#f59e0b" };
+  return { label: "CLEAR", detail: "free flow", color: "#20d86b" };
+}
+
 function mph(speedMps) {
   if (speedMps == null || Number.isNaN(Number(speedMps))) return null;
   return Math.max(0, Math.round(Number(speedMps) * 2.23694));
@@ -316,6 +334,7 @@ export default function RouteMap({
   const speed = mph(liveVehicle?.speedMps);
   const roadSpeed = trafficFlow?.currentSpeed != null ? Math.round(Number(trafficFlow.currentSpeed)) : null;
   const freeFlowSpeed = trafficFlow?.freeFlowSpeed != null ? Math.round(Number(trafficFlow.freeFlowSpeed)) : null;
+  const trafficState = trafficStatus(trafficFlow);
   const rawRouteLine = visibleRoute?.geometry?.length > 1 ? visibleRoute.geometry : [];
   const trimIndex = navigationMode && liveVehicle ? Math.max(0, nearestRouteIndex(liveVehicle, rawRouteLine) - 2) : 0;
   const activeRouteLine = rawRouteLine.slice(trimIndex);
@@ -362,7 +381,7 @@ export default function RouteMap({
           />
           <Polyline
             positions={activeRouteLine}
-            pathOptions={{ color: "#20d86b", weight: 6, opacity: 1 }}
+            pathOptions={{ color: trafficState.color, weight: 6, opacity: 1 }}
           />
         </>
       )}
@@ -431,11 +450,12 @@ export default function RouteMap({
     {navigationMode && autoFollow && (
       <div className="map-follow-badge">FOLLOW</div>
     )}
-    {navigationMode && roadSpeed != null && (
+    {navigationMode && (
       <div className="map-traffic-speed-badge">
-        <span>ROAD</span>
-        <strong>{roadSpeed}</strong>
-        {freeFlowSpeed != null && <small>free {freeFlowSpeed}</small>}
+        <span>TRAFFIC</span>
+        <strong>{trafficState.label}</strong>
+        <small>{roadSpeed != null ? `${roadSpeed} mph` : trafficState.detail}</small>
+        {freeFlowSpeed != null && <small>free {freeFlowSpeed} mph</small>}
       </div>
     )}
     </div>
