@@ -24,8 +24,45 @@ function App() {
   );
   const [officeRequests, setOfficeRequests] = useState([]);
   const [activeOfficeRoute, setActiveOfficeRoute] = useState(null);
-  const [officeRouteCache, setOfficeRouteCache] = useState({});
-  const officeRouteCacheRef = useRef({});
+  const [officeRouteCache, setOfficeRouteCache] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("coachOpsOfficeRouteCache") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const officeRouteCacheRef = useRef(officeRouteCache);
+
+  const saveOfficeRouteCache = (nextCache) => {
+    officeRouteCacheRef.current = nextCache;
+    setOfficeRouteCache(nextCache);
+    try {
+      window.localStorage.setItem("coachOpsOfficeRouteCache", JSON.stringify(nextCache));
+    } catch {
+      // localStorage can fail in private mode; in-memory cache still works.
+    }
+  };
+
+  const vehicleRouteKeys = (vehicle) => {
+    const keys = [];
+    const fleet = String(vehicle?.fleetNo || "").trim().toUpperCase();
+    const reg = String(vehicle?.reg || "").trim().toUpperCase();
+    if (fleet) keys.push(fleet);
+    if (reg && reg !== fleet) keys.push(reg);
+    return keys;
+  };
+
+  const cacheRouteForVehicle = (route, fallbackVehicle = selectedFleet) => {
+    if (!route) return;
+    const next = { ...officeRouteCacheRef.current };
+    const keys = new Set([
+      ...vehicleRouteKeys(fallbackVehicle),
+      ...vehicleRouteKeys(route),
+      String(route?.vehicle || "").trim().toUpperCase(),
+    ].filter(Boolean));
+    keys.forEach((key) => { next[key] = route; });
+    saveOfficeRouteCache(next);
+  };
 
   useEffect(() => {
     if (isDriverOnly) return undefined;
@@ -56,52 +93,54 @@ function App() {
     if (isDriverOnly || !selectedFleet?.fleetNo) return undefined;
 
     let cancelled = false;
-    const selectedVehicleId = String(selectedFleet.fleetNo).trim().toUpperCase();
+    const selectedKeys = vehicleRouteKeys(selectedFleet);
+    const selectedVehicleId = selectedKeys[0];
 
-    // Keep one cached route per coach. Switching vehicles in the office must not
-    // clear another coach's active route; it should show again instantly when
-    // switching back, even if the next network poll is slow.
-    setActiveOfficeRoute(officeRouteCacheRef.current[selectedVehicleId] || null);
+    const cachedRoute = selectedKeys.map((key) => officeRouteCacheRef.current[key]).find(Boolean);
+    if (cachedRoute) setActiveOfficeRoute(cachedRoute);
 
-    const loadActiveRoute = async () => {
+    const loadActiveRoutes = async () => {
       const stamp = Date.now();
       try {
-        const response = await fetch(`/api/routes?vehicle=${encodeURIComponent(selectedVehicleId)}&_=${stamp}`, {
-          cache: "no-store",
-        });
-        const data = await response.json();
-        if (cancelled || !data?.ok) return;
-
-        if (data.route) {
-          officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [selectedVehicleId]: data.route };
-          setOfficeRouteCache(officeRouteCacheRef.current);
-          setActiveOfficeRoute(data.route);
-          return;
-        }
-
-        // Fallback for driver-created routes: serverless/Supabase can briefly
-        // miss the vehicle-filtered read, so scan the active route list and
-        // pick the route that belongs to the selected coach only.
+        // Load the whole active-route list first. This prevents the office map
+        // dropping another coach's route when the controller switches vehicles.
         const allResponse = await fetch(`/api/routes?_=${stamp}`, { cache: "no-store" });
         const allData = await allResponse.json();
         if (cancelled || !allData?.ok) return;
-        const matchingRoute = (allData.routes || []).find((route) => {
-          const routeFleet = String(route?.fleetNo || route?.vehicle || "").trim().toUpperCase();
-          const routeReg = String(route?.reg || "").trim().toUpperCase();
-          return routeFleet === selectedVehicleId || routeReg === String(selectedFleet.reg || "").trim().toUpperCase();
+
+        const nextCache = { ...officeRouteCacheRef.current };
+        (allData.routes || []).forEach((route) => {
+          const routeKeys = vehicleRouteKeys(route);
+          const routeVehicle = String(route?.vehicle || "").trim().toUpperCase();
+          if (routeVehicle) routeKeys.push(routeVehicle);
+          routeKeys.filter(Boolean).forEach((key) => { nextCache[key] = route; });
         });
-        if (matchingRoute) {
-          officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [selectedVehicleId]: matchingRoute };
-          setOfficeRouteCache(officeRouteCacheRef.current);
-          setActiveOfficeRoute(matchingRoute);
+        saveOfficeRouteCache(nextCache);
+
+        let matchingRoute = selectedKeys.map((key) => nextCache[key]).find(Boolean) || null;
+
+        // If the all-list missed it, check the selected coach directly. Do not
+        // clear the map when the direct lookup says null; a Vercel/Supabase read
+        // can briefly lag and old route must remain until explicit Clear.
+        if (!matchingRoute && selectedVehicleId) {
+          const response = await fetch(`/api/routes?vehicle=${encodeURIComponent(selectedVehicleId)}&_=${stamp}`, {
+            cache: "no-store",
+          });
+          const data = await response.json();
+          if (!cancelled && data?.ok && data.route) {
+            matchingRoute = data.route;
+            cacheRouteForVehicle(data.route, selectedFleet);
+          }
         }
+
+        if (!cancelled && matchingRoute) setActiveOfficeRoute(matchingRoute);
       } catch (err) {
         console.error("Office active route fetch failed", err);
       }
     };
 
-    loadActiveRoute();
-    const timer = window.setInterval(loadActiveRoute, 3000);
+    loadActiveRoutes();
+    const timer = window.setInterval(loadActiveRoutes, 3000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -337,17 +376,13 @@ function App() {
                 <OfficeRouteTools
                   selectedFleet={selectedFleet}
                   onRouteBuilt={(route) => {
-                    const vehicleId = String(route?.fleetNo || selectedFleet.fleetNo || "").trim().toUpperCase();
-                    officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [vehicleId]: route };
-                    setOfficeRouteCache(officeRouteCacheRef.current);
+                    cacheRouteForVehicle(route, selectedFleet);
                     setActiveOfficeRoute(route);
                   }}
                   onRouteCleared={() => {
-                    const vehicleId = String(selectedFleet.fleetNo || "").trim().toUpperCase();
                     const next = { ...officeRouteCacheRef.current };
-                    delete next[vehicleId];
-                    officeRouteCacheRef.current = next;
-                    setOfficeRouteCache(next);
+                    vehicleRouteKeys(selectedFleet).forEach((key) => delete next[key]);
+                    saveOfficeRouteCache(next);
                     setActiveOfficeRoute(null);
                   }}
                 />
