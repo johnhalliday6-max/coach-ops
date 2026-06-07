@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { defaultRouteLibrary, deleteCustomRoute, loadRouteLibrary, saveCustomRoute } from '../data/routeLibrary';
+import { deleteCustomRoute, loadRouteLibrary, resetStarterRoutes, saveCustomRoute } from '../data/routeLibrary';
 import { buildVehicleRoute, clearVehicleRoute, pushRouteToDriver, saveActiveRoute } from '../shared/routePlanning';
+import PlaceSearchBox from './PlaceSearchBox';
 
 function makeId(value) {
   return String(value || 'route')
@@ -9,25 +10,42 @@ function makeId(value) {
     .replace(/^-|-$/g, '') || `route-${Date.now()}`;
 }
 
-export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelectDashboard }) {
-  const [routes, setRoutes] = useState(loadRouteLibrary);
-  const [selectedRouteId, setSelectedRouteId] = useState(routes[0]?.id || '');
-  const [status, setStatus] = useState('Select a saved route, assign it to a coach, then push to driver.');
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({
+function blankForm(selectedFleet) {
+  return {
+    id: '',
     number: '',
     name: '',
-    operator: selectedFleet.operator || 'Go-Ahead Coach Ops',
+    operator: selectedFleet?.operator || 'Go-Ahead Coach Ops',
     category: 'School',
     stopsText: '',
     destination: '',
     notes: '',
-  });
+  };
+}
+
+export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelectDashboard }) {
+  const [routes, setRoutes] = useState(loadRouteLibrary);
+  const [selectedRouteId, setSelectedRouteId] = useState(routes[0]?.id || '');
+  const [status, setStatus] = useState('Create a route, assign it to a coach, then plot or push it.');
+  const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(blankForm(selectedFleet));
 
   const selectedRoute = useMemo(
     () => routes.find((route) => route.id === selectedRouteId) || routes[0] || null,
     [routes, selectedRouteId],
   );
+
+  const filteredRoutes = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return routes;
+    return routes.filter((route) =>
+      `${route.number} ${route.name} ${route.operator} ${route.category} ${(route.stops || []).join(' ')} ${route.destination}`
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [routes, search]);
 
   useEffect(() => {
     if (!selectedRouteId && routes[0]?.id) setSelectedRouteId(routes[0].id);
@@ -35,16 +53,26 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
 
   const refreshRoutes = () => setRoutes(loadRouteLibrary());
 
-  const resetForm = () => {
+  const startNewRoute = () => {
+    setEditing(true);
+    setForm(blankForm(selectedFleet));
+    setStatus('Creating a new route. Add route number, stops and destination.');
+  };
+
+  const editSelectedRoute = () => {
+    if (!selectedRoute) return;
+    setEditing(true);
     setForm({
-      number: '',
-      name: '',
-      operator: selectedFleet.operator || 'Go-Ahead Coach Ops',
-      category: 'School',
-      stopsText: '',
-      destination: '',
-      notes: '',
+      id: selectedRoute.id,
+      number: selectedRoute.number || '',
+      name: selectedRoute.name || '',
+      operator: selectedRoute.operator || selectedFleet.operator || 'Go-Ahead Coach Ops',
+      category: selectedRoute.category || 'Route',
+      stopsText: (selectedRoute.stops || []).join('\n'),
+      destination: selectedRoute.destination || '',
+      notes: selectedRoute.notes || '',
     });
+    setStatus(`Editing ${selectedRoute.number} - ${selectedRoute.name}.`);
   };
 
   const saveRoute = () => {
@@ -54,7 +82,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     }
 
     const route = {
-      id: makeId(`${form.number}-${form.name}`),
+      id: form.id || makeId(`${form.number}-${form.name}`),
       number: form.number.trim(),
       name: form.name.trim(),
       operator: form.operator.trim() || selectedFleet.operator,
@@ -71,19 +99,24 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     refreshRoutes();
     setSelectedRouteId(route.id);
     setStatus(`Saved route ${route.number} - ${route.name}.`);
-    resetForm();
+    setEditing(false);
+    setForm(blankForm(selectedFleet));
   };
 
   const deleteRoute = () => {
     if (!selectedRoute) return;
-    if (defaultRouteLibrary.some((route) => route.id === selectedRoute.id)) {
-      setStatus('Built-in demo routes cannot be deleted. Create your own live route and delete that instead.');
-      return;
-    }
+    const ok = window.confirm(`Delete/ hide route ${selectedRoute.number} - ${selectedRoute.name}?`);
+    if (!ok) return;
     deleteCustomRoute(selectedRoute.id);
     refreshRoutes();
     setSelectedRouteId('');
-    setStatus('Route deleted.');
+    setStatus('Route removed from the library.');
+  };
+
+  const resetStarters = () => {
+    resetStarterRoutes();
+    refreshRoutes();
+    setStatus('Starter routes restored.');
   };
 
   const plotRoute = async ({ push = false } = {}) => {
@@ -100,7 +133,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
       await saveActiveRoute(built);
       onRouteBuilt?.(built);
       if (push) await pushRouteToDriver(selectedFleet, built);
-      setStatus(`${selectedRoute.number} plotted for ${selectedFleet.fleetNo}: ${built.distanceMiles} miles · ${built.durationMinutes} mins${push ? ' · pushed to driver' : ''}.`);
+      setStatus(`${selectedRoute.number} ${push ? 'pushed' : 'plotted'} for ${selectedFleet.fleetNo}: ${built.distanceMiles} miles · ${built.durationMinutes} mins.`);
       onSelectDashboard?.();
     } catch (error) {
       console.error(error);
@@ -115,26 +148,39 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
       <div className="routes-library-header">
         <div>
           <h2>Routes Library</h2>
-          <p>Premake school runs, rail work, event shuttles and airport jobs. Select one, assign it to a coach, then plot or push it.</p>
+          <p>Build permanent school runs, rail work, shuttles and airport jobs. Select a route, assign it to a coach, then plot or push it.</p>
         </div>
         <strong>Selected coach: {selectedFleet.fleetNo} / {selectedFleet.reg}</strong>
       </div>
 
       <div className="routes-library-grid">
         <div className="route-library-list card">
-          <h3>Saved Routes</h3>
-          {routes.map((route) => (
+          <div className="route-library-toolbar">
+            <h3>Saved Routes</h3>
+            <button type="button" onClick={startNewRoute}>+ Create</button>
+          </div>
+          <input
+            className="route-library-search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search 315, school, rail, airport..."
+          />
+          {filteredRoutes.map((route) => (
             <button
               key={route.id}
               type="button"
               className={selectedRoute?.id === route.id ? 'route-library-item active' : 'route-library-item'}
-              onClick={() => setSelectedRouteId(route.id)}
+              onClick={() => {
+                setSelectedRouteId(route.id);
+                setEditing(false);
+              }}
             >
               <strong>{route.number}</strong>
               <span>{route.name}</span>
-              <small>{route.category} · {route.operator}</small>
+              <small>{route.category} · {route.operator}{route.starter ? ' · starter' : ''}</small>
             </button>
           ))}
+          <button className="soft-button" type="button" onClick={resetStarters}>Restore starter routes</button>
         </div>
 
         <div className="route-library-detail card">
@@ -154,6 +200,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
               <div className="route-library-actions">
                 <button disabled={busy} onClick={() => plotRoute({ push: false })}>🗺 Plot on Office Map</button>
                 <button disabled={busy} onClick={() => plotRoute({ push: true })}>📲 Push to Driver</button>
+                <button disabled={busy} onClick={editSelectedRoute}>Edit</button>
                 <button disabled={busy} className="danger-soft" onClick={deleteRoute}>Delete</button>
               </div>
             </>
@@ -162,15 +209,23 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
         </div>
 
         <div className="route-library-create card">
-          <h3>Create Route</h3>
-          <label>Route number<input value={form.number} onChange={(e) => setForm((c) => ({ ...c, number: e.target.value }))} placeholder="315" /></label>
-          <label>Name<input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} placeholder="Whitby School Run" /></label>
-          <label>Operator<input value={form.operator} onChange={(e) => setForm((c) => ({ ...c, operator: e.target.value }))} /></label>
-          <label>Type<input value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} placeholder="School / Rail / Event" /></label>
-          <label>Stops / pickups<textarea value={form.stopsText} onChange={(e) => setForm((c) => ({ ...c, stopsText: e.target.value }))} placeholder={'One stop per line\nSleights\nRuswarp\nWhitby'} /></label>
-          <label>Destination<input value={form.destination} onChange={(e) => setForm((c) => ({ ...c, destination: e.target.value }))} placeholder="Caedmon College Whitby" /></label>
-          <label>Notes<textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="School run notes, contract details, access instructions..." /></label>
-          <button disabled={busy} onClick={saveRoute}>Save Route</button>
+          <h3>{editing ? 'Create / Edit Route' : 'Create Route'}</h3>
+          {!editing && <p>Select + Create or Edit to open the form.</p>}
+          {editing && (
+            <>
+              <label>Route number<input value={form.number} onChange={(e) => setForm((c) => ({ ...c, number: e.target.value }))} placeholder="315" /></label>
+              <label>Name<input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} placeholder="Whitby School Run" /></label>
+              <label>Operator<input value={form.operator} onChange={(e) => setForm((c) => ({ ...c, operator: e.target.value }))} /></label>
+              <label>Type<input value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} placeholder="School / Rail / Event" /></label>
+              <label>Stops / pickups<textarea value={form.stopsText} onChange={(e) => setForm((c) => ({ ...c, stopsText: e.target.value }))} placeholder={'One stop per line\nSleights\nRuswarp\nWhitby'} /></label>
+              <PlaceSearchBox compact label="Destination" value={form.destination} setValue={(value) => setForm((c) => ({ ...c, destination: value }))} placeholder="Caedmon College Whitby" />
+              <label>Notes<textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Contract notes, access instructions, pickup notes..." /></label>
+              <div className="route-library-actions">
+                <button disabled={busy} onClick={saveRoute}>Save Route</button>
+                <button type="button" onClick={() => { setEditing(false); setForm(blankForm(selectedFleet)); }}>Cancel</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </section>

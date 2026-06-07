@@ -24,6 +24,13 @@ const closureIcon = L.divIcon({
   iconAnchor: [17, 17],
 });
 
+const trafficIcon = L.divIcon({
+  className: "map-emoji-marker traffic-marker",
+  html: "🚦",
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+});
+
 const plannedStopIcon = L.divIcon({
   className: "map-emoji-marker planned-stop-marker",
   html: "📍",
@@ -172,6 +179,8 @@ export default function RouteMap({
   routeOverride = null,
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
+  const [tomTomTraffic, setTomTomTraffic] = useState([]);
+  const [trafficFlow, setTrafficFlow] = useState(null);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
   const [displayVehicle, setDisplayVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
@@ -187,6 +196,52 @@ export default function RouteMap({
       })
       .catch((err) => console.error("Map highways error:", err));
   }, []);
+
+
+  useEffect(() => {
+    const routeLine = routeOverride?.geometry?.length ? routeOverride.geometry : plannedRoute?.geometry || [];
+    const vehiclePoint = trackedVehicle?.lat && trackedVehicle?.lng ? [trackedVehicle.lat, trackedVehicle.lng] : null;
+
+    let url = null;
+    if (routeLine.length > 1) {
+      const lats = routeLine.map((point) => Number(point[0])).filter(Number.isFinite);
+      const lngs = routeLine.map((point) => Number(point[1])).filter(Number.isFinite);
+      if (lats.length && lngs.length) {
+        const pad = 0.18;
+        const bbox = [
+          Math.min(...lngs) - pad,
+          Math.min(...lats) - pad,
+          Math.max(...lngs) + pad,
+          Math.max(...lats) + pad,
+        ].map((n) => n.toFixed(5)).join(',');
+        const flowPart = vehiclePoint ? `&lat=${vehiclePoint[0]}&lng=${vehiclePoint[1]}` : '';
+        url = `/api/tomtom-traffic?bbox=${encodeURIComponent(bbox)}${flowPart}`;
+      }
+    } else if (vehiclePoint) {
+      url = `/api/tomtom-traffic?lat=${vehiclePoint[0]}&lng=${vehiclePoint[1]}&span=0.5`;
+    }
+
+    if (!url) return undefined;
+    let cancelled = false;
+    const loadTraffic = () => {
+      fetch(url)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) {
+            setTomTomTraffic(Array.isArray(data.incidents) ? data.incidents : []);
+            setTrafficFlow(data.flow || null);
+          }
+        })
+        .catch((err) => console.error('TomTom traffic error:', err));
+    };
+
+    loadTraffic();
+    const timer = window.setInterval(loadTraffic, navigationMode ? 60000 : 90000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [navigationMode, plannedRoute?.updatedAt, routeOverride?.updatedAt, trackedVehicle?.lat, trackedVehicle?.lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,6 +314,8 @@ export default function RouteMap({
         : [54.4863, -0.6133];
 
   const speed = mph(liveVehicle?.speedMps);
+  const roadSpeed = trafficFlow?.currentSpeed != null ? Math.round(Number(trafficFlow.currentSpeed)) : null;
+  const freeFlowSpeed = trafficFlow?.freeFlowSpeed != null ? Math.round(Number(trafficFlow.freeFlowSpeed)) : null;
   const rawRouteLine = visibleRoute?.geometry?.length > 1 ? visibleRoute.geometry : [];
   const trimIndex = navigationMode && liveVehicle ? Math.max(0, nearestRouteIndex(liveVehicle, rawRouteLine) - 2) : 0;
   const activeRouteLine = rawRouteLine.slice(trimIndex);
@@ -354,6 +411,17 @@ export default function RouteMap({
           </Popup>
         </Marker>
       ))}
+
+      {tomTomTraffic.map((alert) => (
+        <Marker key={`tomtom-${alert.id}`} position={[alert.lat, alert.lng]} icon={trafficIcon}>
+          <Popup>
+            <strong>{alert.road || 'Traffic'}</strong><br />
+            {alert.detail || alert.title}<br />
+            {alert.delaySeconds ? <><small>Delay: {Math.round(alert.delaySeconds / 60)} mins</small><br /></> : null}
+            <small>TomTom live traffic</small>
+          </Popup>
+        </Marker>
+      ))}
     </MapContainer>
     {navigationMode && !autoFollow && (
       <button className="map-recenter-button" type="button" onClick={() => setAutoFollow(true)}>
@@ -362,6 +430,13 @@ export default function RouteMap({
     )}
     {navigationMode && autoFollow && (
       <div className="map-follow-badge">FOLLOW</div>
+    )}
+    {navigationMode && roadSpeed != null && (
+      <div className="map-traffic-speed-badge">
+        <span>ROAD</span>
+        <strong>{roadSpeed}</strong>
+        {freeFlowSpeed != null && <small>free {freeFlowSpeed}</small>}
+      </div>
     )}
     </div>
   );

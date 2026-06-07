@@ -1814,3 +1814,178 @@ body {
     flex-direction: column;
   }
 }
+
+/* Coach Ops V3 traffic + route library polishing */
+.traffic-marker {
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));
+}
+
+.traffic-live-panel {
+  background: #07111f;
+  border: 1px solid #21344f;
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 14px;
+  color: white;
+}
+
+.traffic-live-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.traffic-live-title h2,
+.traffic-live-title p {
+  margin: 0;
+}
+
+.traffic-live-title p,
+.traffic-error {
+  color: #9fb3c8;
+}
+
+.traffic-flow-card {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #12243b;
+  border: 1px solid #2d4666;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.traffic-flow-card span {
+  background: #0c1a2d;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: bold;
+}
+
+.traffic-bad {
+  background: #dc2626 !important;
+  color: white;
+}
+
+.traffic-alert-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.traffic-alert-card {
+  background: #12243b;
+  border: 1px solid #2d4666;
+  border-left: 6px solid #f59e0b;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.traffic-alert-card p {
+  margin: 8px 0;
+}
+
+.traffic-alert-card small {
+  color: #9fb3c8;
+}
+
+.traffic-alert-card.calm {
+  border-left-color: #20d86b;
+}
+
+.map-traffic-speed-badge {
+  position: absolute;
+  right: 12px;
+  bottom: 74px;
+  z-index: 900;
+  background: rgba(6,16,29,0.92);
+  color: white;
+  border: 1px solid #21344f;
+  border-radius: 14px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+}
+
+.map-traffic-speed-badge span,
+.map-traffic-speed-badge small {
+  font-size: 10px;
+  color: #9fb3c8;
+}
+
+.map-traffic-speed-badge strong {
+  font-size: 22px;
+}
+
+.route-library-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.route-library-toolbar h3 {
+  margin: 0;
+}
+
+.route-library-search {
+  width: 100%;
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #dce3ef;
+}
+
+.soft-button {
+  background: #334155 !important;
+}
+
+.driver-assigned-route-card {
+  background: #0c1a2d;
+  border: 1px solid #21344f;
+  border-left: 7px solid #20d86b;
+  border-radius: 18px;
+  padding: 16px;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.driver-assigned-route-card h2,
+.driver-assigned-route-card p {
+  margin: 4px 0;
+}
+
+.driver-assigned-route-card small {
+  color: #9fb3c8;
+}
+
+.driver-assigned-route-card button {
+  min-width: 130px;
+  border: 0;
+  border-radius: 12px;
+  padding: 14px;
+  background: #20d86b;
+  color: #06101d;
+  font-weight: bold;
+}
+
+@media (max-width: 1100px) {
+  .traffic-alert-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .traffic-live-title,
+  .driver-assigned-route-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

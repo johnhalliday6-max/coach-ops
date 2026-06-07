@@ -10,6 +10,7 @@ import HighwaysLive from "./components/HighwaysLive";
 import DriverView from "./components/DriverView";
 import OfficeRouteTools from "./components/OfficeRouteTools";
 import RouteLibraryPage from "./components/RouteLibraryPage";
+import TrafficLive from "./components/TrafficLive";
 
 function App() {
   const [selectedFleet, setSelectedFleet] = useState(fleetData[0]);
@@ -309,6 +310,7 @@ function App() {
               </div>
             </section>
 
+            <TrafficLive selectedFleet={selectedFleet} activeRoute={activeOfficeRoute} />
             <HighwaysLive />
 
             <section className="bottom-grid">

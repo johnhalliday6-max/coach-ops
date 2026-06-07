@@ -1,11 +1,11 @@
-export const defaultRouteLibrary = [
+export const starterRouteLibrary = [
   {
     id: '315-school-run',
     number: '315',
     name: 'Whitby / Esk Valley School Run',
     operator: 'Esk Valley Coaches',
     category: 'School',
-    notes: 'Template route for school contract testing. Edit stops in Routes page before assigning live.',
+    notes: 'Starter template. Edit stops before assigning live.',
     stops: [
       'Esk Valley Coaches Whitby YO22 4PU',
       'Sleights, North Yorkshire',
@@ -19,7 +19,7 @@ export const defaultRouteLibrary = [
     name: 'York Racecourse Shuttle',
     operator: 'Esk Valley Coaches',
     category: 'Event',
-    notes: 'Coach movement to York Racecourse.',
+    notes: 'Starter coach movement to York Racecourse.',
     stops: ['Esk Valley Coaches Whitby YO22 4PU'],
     destination: 'York Racecourse, York',
   },
@@ -29,7 +29,7 @@ export const defaultRouteLibrary = [
     name: 'Rail Replacement Test Route',
     operator: 'Go-Ahead Coach Ops',
     category: 'Rail',
-    notes: 'Multi-stop rail replacement demo route.',
+    notes: 'Starter rail replacement route. Use as a template then edit.',
     stops: ['Scarborough Railway Station', 'Malton Railway Station'],
     destination: 'York Railway Station',
   },
@@ -39,33 +39,74 @@ export const defaultRouteLibrary = [
     name: 'Manchester Airport T2 Test',
     operator: 'Esk Valley Coaches',
     category: 'Airport',
-    notes: 'Whitby to Manchester Airport Terminal 2 with services stop.',
+    notes: 'Starter Whitby to Manchester Airport Terminal 2 with services stop.',
     stops: ['Birch Services M62 Westbound'],
     destination: 'Manchester Airport Terminal 2',
   },
 ];
 
-export function loadRouteLibrary() {
-  if (typeof window === 'undefined') return defaultRouteLibrary;
+export const defaultRouteLibrary = starterRouteLibrary;
+
+function readCustomRoutes() {
+  if (typeof window === 'undefined') return [];
   try {
     const custom = JSON.parse(window.localStorage.getItem('coachOpsRouteLibrary') || '[]');
-    const safeCustom = Array.isArray(custom) ? custom : [];
-    const ids = new Set(safeCustom.map((route) => route.id));
-    return [...safeCustom, ...defaultRouteLibrary.filter((route) => !ids.has(route.id))];
+    return Array.isArray(custom) ? custom : [];
   } catch {
-    return defaultRouteLibrary;
+    return [];
   }
+}
+
+function readHiddenStarterIds() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const hidden = JSON.parse(window.localStorage.getItem('coachOpsHiddenStarterRoutes') || '[]');
+    return Array.isArray(hidden) ? hidden : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCustomRoutes(routes) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem('coachOpsRouteLibrary', JSON.stringify(routes));
+}
+
+function writeHiddenStarterIds(ids) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem('coachOpsHiddenStarterRoutes', JSON.stringify(Array.from(new Set(ids))));
+}
+
+export function loadRouteLibrary() {
+  const custom = readCustomRoutes();
+  const hidden = new Set(readHiddenStarterIds());
+  const customIds = new Set(custom.map((route) => route.id));
+  const starters = starterRouteLibrary
+    .filter((route) => !hidden.has(route.id) && !customIds.has(route.id))
+    .map((route) => ({ ...route, starter: true }));
+  return [...custom, ...starters];
 }
 
 export function saveCustomRoute(route) {
   if (typeof window === 'undefined') return;
-  const current = loadRouteLibrary().filter((item) => !defaultRouteLibrary.some((base) => base.id === item.id));
-  const withoutExisting = current.filter((item) => item.id !== route.id);
-  window.localStorage.setItem('coachOpsRouteLibrary', JSON.stringify([route, ...withoutExisting]));
+  const current = readCustomRoutes();
+  const savedRoute = { ...route, starter: false, updatedAt: new Date().toISOString() };
+  const withoutExisting = current.filter((item) => item.id !== savedRoute.id);
+  writeCustomRoutes([savedRoute, ...withoutExisting]);
 }
 
 export function deleteCustomRoute(id) {
   if (typeof window === 'undefined') return;
-  const current = loadRouteLibrary().filter((item) => !defaultRouteLibrary.some((base) => base.id === item.id));
-  window.localStorage.setItem('coachOpsRouteLibrary', JSON.stringify(current.filter((item) => item.id !== id)));
+  const custom = readCustomRoutes();
+  const customWasRemoved = custom.some((item) => item.id === id);
+  writeCustomRoutes(custom.filter((item) => item.id !== id));
+
+  if (!customWasRemoved && starterRouteLibrary.some((item) => item.id === id)) {
+    writeHiddenStarterIds([...readHiddenStarterIds(), id]);
+  }
+}
+
+export function resetStarterRoutes() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem('coachOpsHiddenStarterRoutes');
 }

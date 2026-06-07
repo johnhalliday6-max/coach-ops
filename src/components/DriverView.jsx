@@ -385,6 +385,27 @@ export default function DriverView({ selectedFleet }) {
   }, []);
 
   useEffect(() => {
+    if (!lastPosition?.lat || !lastPosition?.lng) return undefined;
+    let cancelled = false;
+
+    const loadFlow = () => {
+      fetch(`/api/tomtom-traffic?lat=${lastPosition.lat}&lng=${lastPosition.lng}&span=0.25`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) setTrafficFlow(data.flow || null);
+        })
+        .catch((err) => console.error('Driver TomTom flow failed', err));
+    };
+
+    loadFlow();
+    const timer = window.setInterval(loadFlow, 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [lastPosition?.lat, lastPosition?.lng]);
+
+  useEffect(() => {
     if (!lastPosition || !routeSummary) return;
 
     const currentPoint = { lat: lastPosition.lat, lng: lastPosition.lng };
@@ -408,6 +429,32 @@ export default function DriverView({ selectedFleet }) {
     }
   }, [lastPosition, routeSummary, destination]);
 
+
+  useEffect(() => {
+    if (!vehicleSelected) return undefined;
+    let cancelled = false;
+
+    const loadActiveRoute = () => {
+      fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok && data.route && !routeSummary) {
+            setRouteSummary(data.route);
+            setDestination(data.route.destination || '');
+            setStops(Array.isArray(data.route.stops) ? data.route.stops : []);
+            setRouteStatus(`Assigned route loaded: ${data.route.destination || 'route'}`);
+          }
+        })
+        .catch((err) => console.error('Driver active route fetch failed', err));
+    };
+
+    loadActiveRoute();
+    const timer = window.setInterval(loadActiveRoute, 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [vehicleSelected, vehicle.fleetNo, routeSummary]);
 
   useEffect(() => {
     if (!vehicleSelected) return undefined;
@@ -543,8 +590,9 @@ export default function DriverView({ selectedFleet }) {
 
           <div className="satnav-speed-panel">
             <div className="speed-limit-circle">
-              <span>LIMIT</span>
-              <strong>--</strong>
+              <span>ROAD</span>
+              <strong>{trafficFlow?.currentSpeed != null ? Math.round(Number(trafficFlow.currentSpeed)) : '--'}</strong>
+              <small>{trafficFlow?.freeFlowSpeed != null ? `free ${Math.round(Number(trafficFlow.freeFlowSpeed))}` : 'TomTom'}</small>
             </div>
             <div className="current-speed-box">
               <span>YOU</span>
@@ -583,6 +631,18 @@ export default function DriverView({ selectedFleet }) {
           </div>
           <button onClick={acceptRoutePush}>View & Accept</button>
           <button onClick={declineRoutePush}>Decline</button>
+        </section>
+      )}
+
+      {routeSummary && (
+        <section className="driver-assigned-route-card">
+          <div>
+            <strong>Assigned Route</strong>
+            <h2>{routeSummary.routeNumber ? `${routeSummary.routeNumber} · ` : ''}{routeSummary.routeName || routeSummary.destination}</h2>
+            <p>{routeSummary.stops?.length ? `${routeSummary.stops.join(' → ')} → ` : ''}{routeSummary.destination}</p>
+            <small>{routeSummary.distanceMiles || '--'} miles · approx {routeSummary.durationMinutes || '--'} mins · {routeSummary.engine || 'route'}</small>
+          </div>
+          <button type="button" onClick={() => { setNavMode(true); requestWakeLock(); }}>Navigate</button>
         </section>
       )}
 
