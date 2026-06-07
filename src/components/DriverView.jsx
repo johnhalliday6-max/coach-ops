@@ -4,6 +4,19 @@ import DriverIntel from "./DriverIntel";
 import { fleetData } from "../data/fleetData";
 import PlaceSearchBox from "./PlaceSearchBox";
 
+const DRIVER_TEST_PROFILES = {
+  "1600026": {
+    employeeId: "1600026",
+    name: "John Halliday",
+    preferredFleetNo: "23031",
+  },
+  "06032013": {
+    employeeId: "06032013",
+    name: "Anna Bonnard-Halliday",
+    preferredFleetNo: "23030",
+  },
+};
+
 
 function metresBetween(a, b) {
   if (!a || !b) return Infinity;
@@ -105,6 +118,9 @@ export default function DriverView({ selectedFleet }) {
 
   const [vehicle, setVehicle] = useState(defaultVehicle);
   const [vehicleSelected, setVehicleSelected] = useState(false);
+  const [driverProfile, setDriverProfile] = useState(null);
+  const [employeeIdInput, setEmployeeIdInput] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [passengers, setPassengers] = useState(34);
   const [message, setMessage] = useState("");
   const [lastAction, setLastAction] = useState("Select vehicle to begin");
@@ -183,6 +199,41 @@ export default function DriverView({ selectedFleet }) {
     setPendingRoutePush(null);
     setActiveStepIndex(0);
     setOffRoute(false);
+  };
+
+  const loginDriver = () => {
+    const employeeId = employeeIdInput.trim();
+    const profile = DRIVER_TEST_PROFILES[employeeId];
+
+    if (!profile) {
+      setLoginError("Employee number not recognised in this test build");
+      return;
+    }
+
+    const assignedVehicle = fleetData.find((item) => item.fleetNo === profile.preferredFleetNo) || vehicle || fleetData[0];
+    setDriverProfile(profile);
+    setVehicle(assignedVehicle);
+    selectedVehicleRef.current = assignedVehicle.fleetNo;
+    setVehicleSelected(true);
+    setLoginError("");
+    clearLocalRouteState();
+    setNavMode(false);
+    setDestination("");
+    setStops([]);
+    setRouteStatus(`Logged in as ${profile.name}. Vehicle ${assignedVehicle.fleetNo} assigned.`);
+    setLastAction(`Driver logged in: ${profile.name} · ${assignedVehicle.fleetNo} / ${assignedVehicle.reg}`);
+    window.setTimeout(startTracking, 0);
+  };
+
+  const switchVehicle = (item) => {
+    setVehicle(item);
+    selectedVehicleRef.current = item.fleetNo;
+    clearLocalRouteState();
+    setNavMode(false);
+    setDestination("");
+    setStops([]);
+    setRouteStatus(`Selected ${item.fleetNo} / ${item.reg}`);
+    setLastAction(`Vehicle changed to ${item.fleetNo} / ${item.reg}`);
   };
 
   const notify = (text, type = "INFO") => {
@@ -537,50 +588,47 @@ export default function DriverView({ selectedFleet }) {
     };
   }, [vehicleSelected, vehicle.fleetNo]);
 
-  if (!vehicleSelected) {
+  if (!driverProfile) {
     return (
       <main className="driver-select-page">
-        <section className="driver-select-card">
+        <section className="driver-select-card driver-login-card">
           <h1>Coach Ops Driver</h1>
-          <p>Select tonight's vehicle. GPS tracking starts automatically after selection.</p>
-          <div className="driver-vehicle-list">
-            {fleetData.map((item) => (
-              <button
-                key={item.fleetNo}
-                className={item.fleetNo === vehicle.fleetNo ? "vehicle-select active" : "vehicle-select"}
-                onClick={() => {
-                  setVehicle(item);
-                  selectedVehicleRef.current = item.fleetNo;
-                  setRouteSummary(null);
-                  setPendingRoutePush(null);
-                  setNavMode(false);
-                  setDestination("");
-                  setStops([]);
-                  setRouteStatus(`Selected ${item.fleetNo} / ${item.reg}`);
-                  setLastAction(`Selected ${item.fleetNo} / ${item.reg}`);
-                }}
-              >
-                <strong>{item.fleetNo}</strong>
-                <span>{item.reg}</span>
-                <small>{item.operator} · {item.depot}</small>
-              </button>
-            ))}
-          </div>
-          <button
-            className="driver-start-button"
-            onClick={() => {
-              selectedVehicleRef.current = vehicle.fleetNo;
-              setVehicleSelected(true);
-              setLastAction(`Vehicle assigned: ${vehicle.fleetNo} / ${vehicle.reg}`);
-              window.setTimeout(startTracking, 0);
-            }}
-          >
-            Continue with {vehicle.fleetNo} / {vehicle.reg}
+          <p>Enter your employee number to open the driver tablet.</p>
+
+          <label className="driver-login-label">
+            Employee number
+            <input
+              className="driver-login-input"
+              value={employeeIdInput}
+              inputMode="numeric"
+              autoFocus
+              placeholder="1600026"
+              onChange={(event) => {
+                setEmployeeIdInput(event.target.value);
+                setLoginError("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") loginDriver();
+              }}
+            />
+          </label>
+
+          {loginError && <div className="tracking-error driver-login-error">{loginError}</div>}
+
+          <button className="driver-start-button" onClick={loginDriver}>
+            Log in
           </button>
+
+          <div className="driver-login-testers">
+            <strong>Test logins</strong>
+            <button type="button" onClick={() => setEmployeeIdInput("1600026")}>John · 1600026</button>
+            <button type="button" onClick={() => setEmployeeIdInput("06032013")}>Anna · 06032013</button>
+          </div>
         </section>
       </main>
     );
   }
+
 
   if (navMode && routeSummary) {
     return (
@@ -660,10 +708,34 @@ export default function DriverView({ selectedFleet }) {
       <header className="driver-only-header">
         <div>
           <h1>Coach Ops Driver</h1>
-          <p>{vehicle.fleetNo} · {vehicle.reg} · GPS start point used for routes</p>
+          <p>{driverProfile?.name} · {driverProfile?.employeeId} · {vehicle.fleetNo} · {vehicle.reg}</p>
         </div>
         <span>{tracking ? "GPS LIVE" : "GPS WAITING"}</span>
       </header>
+
+      <section className="driver-current-vehicle-card">
+        <div>
+          <strong>Current vehicle</strong>
+          <h2>{vehicle.fleetNo} · {vehicle.reg}</h2>
+          <p>{vehicle.operator} · {vehicle.depot}</p>
+        </div>
+        <details>
+          <summary>Change vehicle</summary>
+          <div className="driver-vehicle-list compact">
+            {fleetData.map((item) => (
+              <button
+                key={item.fleetNo}
+                className={item.fleetNo === vehicle.fleetNo ? "vehicle-select active" : "vehicle-select"}
+                onClick={() => switchVehicle(item)}
+              >
+                <strong>{item.fleetNo}</strong>
+                <span>{item.reg}</span>
+                <small>{item.operator} · {item.depot}</small>
+              </button>
+            ))}
+          </div>
+        </details>
+      </section>
 
       {pendingRoutePush && (
         <section className="driver-route-update-banner">

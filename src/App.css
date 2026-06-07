@@ -1989,3 +1989,109 @@ body {
     align-items: stretch;
   }
 }
+
+/* Driver login first flow */
+.driver-login-card {
+  display: grid;
+  gap: 14px;
+}
+
+.driver-login-label {
+  display: grid;
+  gap: 8px;
+  color: #9fb3c8;
+  font-weight: 800;
+}
+
+.driver-login-input {
+  width: 100%;
+  border: 1px solid #21344f;
+  border-radius: 14px;
+  padding: 16px;
+  background: #07111f;
+  color: white;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.driver-login-error {
+  background: #fee2e2;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.driver-login-testers {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #21344f;
+  color: #9fb3c8;
+}
+
+.driver-login-testers button {
+  border: 1px solid #21344f;
+  border-radius: 12px;
+  padding: 12px;
+  background: #12243b;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  text-align: left;
+}
+
+.driver-current-vehicle-card {
+  background: #f7f9fc;
+  color: #0b1220;
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.driver-current-vehicle-card h2,
+.driver-current-vehicle-card p {
+  margin: 4px 0 0;
+}
+
+.driver-current-vehicle-card details {
+  min-width: 260px;
+}
+
+.driver-current-vehicle-card summary {
+  cursor: pointer;
+  font-weight: 900;
+  color: #1268ff;
+}
+
+.driver-vehicle-list.compact {
+  max-height: 360px;
+  overflow: auto;
+  margin-top: 12px;
+}
+
+.driver-vehicle-list.compact .vehicle-select {
+  padding: 10px;
+}
+
+.driver-vehicle-list.compact .vehicle-select strong {
+  font-size: 17px;
+}
+
+.driver-vehicle-list.compact .vehicle-select span {
+  font-size: 15px;
+}
+
+@media (max-width: 700px) {
+  .driver-current-vehicle-card {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-current-vehicle-card details {
+    min-width: 0;
+  }
+}
