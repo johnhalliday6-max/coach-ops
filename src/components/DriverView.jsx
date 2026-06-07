@@ -20,22 +20,6 @@ function metresBetween(a, b) {
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-
-function bearingBetween(a, b) {
-  if (!a || !b) return null;
-  const lat1 = Number(a.lat ?? a[0]);
-  const lng1 = Number(a.lng ?? a[1]);
-  const lat2 = Number(b.lat ?? b[0]);
-  const lng2 = Number(b.lng ?? b[1]);
-  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return null;
-  const toRad = (value) => (value * Math.PI) / 180;
-  const toDeg = (value) => (value * 180) / Math.PI;
-  const y = Math.sin(toRad(lng2 - lng1)) * Math.cos(toRad(lat2));
-  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lng2 - lng1));
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-
 function distanceToRouteMetres(position, geometry) {
   if (!position || !Array.isArray(geometry) || geometry.length === 0) return Infinity;
   let best = Infinity;
@@ -140,7 +124,6 @@ export default function DriverView({ selectedFleet }) {
   const watchId = useRef(null);
   const rerouteLock = useRef(false);
   const wakeLockRef = useRef(null);
-  const lastAcceptedGpsRef = useRef(null);
 
   const nextStep = useMemo(
     () => routeSummary?.instructions?.[activeStepIndex] || routeSummary?.instructions?.[0] || null,
@@ -206,8 +189,7 @@ export default function DriverView({ selectedFleet }) {
   const postLocation = async (position) => {
     const coords = position.coords;
 
-    const previousGps = lastAcceptedGpsRef.current;
-    const rawPayload = {
+    const payload = {
       fleetNo: vehicle.fleetNo,
       reg: vehicle.reg,
       operator: vehicle.operator,
@@ -219,38 +201,12 @@ export default function DriverView({ selectedFleet }) {
       heading: coords.heading,
     };
 
-    if (rawPayload.accuracy && rawPayload.accuracy > 45) {
-      setLastAction(`GPS accuracy poor: ±${Math.round(rawPayload.accuracy)}m`);
+    if (payload.accuracy && payload.accuracy > 80) {
+      setLastAction(`GPS accuracy poor: ±${Math.round(payload.accuracy)}m`);
       return;
     }
 
-    if (previousGps) {
-      const jumpMetres = metresBetween(previousGps, rawPayload);
-      const seconds = Math.max(1, (Date.now() - new Date(previousGps.updatedAt).getTime()) / 1000);
-      const impliedMps = jumpMetres / seconds;
-      if (jumpMetres > 180 && impliedMps > 45) {
-        setLastAction(`Ignored GPS jump: ${Math.round(jumpMetres)}m`);
-        return;
-      }
-    }
-
-    const inferredHeading = previousGps ? bearingBetween(previousGps, rawPayload) : null;
-    const payload = {
-      ...rawPayload,
-      heading: Number.isFinite(Number(rawPayload.heading)) ? rawPayload.heading : inferredHeading,
-    };
-
-    const displayPayload = previousGps
-      ? {
-          ...payload,
-          lat: Number(previousGps.lat) + (Number(payload.lat) - Number(previousGps.lat)) * 0.45,
-          lng: Number(previousGps.lng) + (Number(payload.lng) - Number(previousGps.lng)) * 0.45,
-        }
-      : payload;
-
-    const updatedPayload = { ...displayPayload, updatedAt: new Date().toISOString() };
-    lastAcceptedGpsRef.current = updatedPayload;
-    setLastPosition(updatedPayload);
+    setLastPosition({ ...payload, updatedAt: new Date().toISOString() });
 
     try {
       await fetch("/api/tracking", {
@@ -432,14 +388,8 @@ export default function DriverView({ selectedFleet }) {
     if (!lastPosition || !routeSummary) return;
 
     const currentPoint = { lat: lastPosition.lat, lng: lastPosition.lng };
-    const progressIndex = instructionIndexFromRouteProgress(currentPoint, routeSummary);
-    setActiveStepIndex((current) => {
-      const currentStep = routeSummary.instructions?.[current];
-      const distanceToCurrentStep = currentStep?.location ? metresBetween(currentPoint, currentStep.location) : Infinity;
-      const closeEnoughToAdvance = distanceToCurrentStep < 55 && current < (routeSummary.instructions?.length || 1) - 1;
-      const advanced = closeEnoughToAdvance ? current + 1 : current;
-      return Math.max(advanced, progressIndex);
-    });
+    const nextIndex = instructionIndexFromRouteProgress(currentPoint, routeSummary);
+    setActiveStepIndex((current) => Math.max(current, nextIndex));
 
     const routeDistance = distanceToRouteMetres(currentPoint, routeSummary.geometry || []);
     const isOffRoute = routeDistance > 150;
@@ -588,7 +538,7 @@ export default function DriverView({ selectedFleet }) {
             followCoach
             navigationMode
             fitRoute={false}
-            localVehicle={lastPosition}
+            routeOverride={routeSummary}
           />
 
           <div className="satnav-speed-panel">
@@ -707,7 +657,7 @@ export default function DriverView({ selectedFleet }) {
             liveTracking
             followCoach
             fitRoute={false}
-            localVehicle={lastPosition}
+            routeOverride={routeSummary}
           />
         </section>
 

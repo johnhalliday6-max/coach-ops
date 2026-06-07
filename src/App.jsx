@@ -291,11 +291,15 @@ function App() {
               </div>
 
               <div className="map-panel">
-                <RouteMap fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} />
+                <RouteMap fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} routeOverride={activeOfficeRoute} />
               </div>
 
               <div className="tools-panel">
-                <OfficeRouteTools selectedFleet={selectedFleet} />
+                <OfficeRouteTools
+                  selectedFleet={selectedFleet}
+                  onRouteBuilt={setActiveOfficeRoute}
+                  onRouteCleared={() => setActiveOfficeRoute(null)}
+                />
               </div>
             </section>
 

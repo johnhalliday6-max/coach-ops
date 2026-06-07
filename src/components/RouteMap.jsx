@@ -77,11 +77,13 @@ function ManualMapWatcher({ enabled, onManualMove }) {
     if (!enabled) return undefined;
     const markManual = () => onManualMove?.();
     map.on("dragstart", markManual);
+    map.on("zoomstart", markManual);
     map.on("mousedown", markManual);
     map.on("touchstart", markManual);
     map.on("wheel", markManual);
     return () => {
       map.off("dragstart", markManual);
+      map.off("zoomstart", markManual);
       map.off("mousedown", markManual);
       map.off("touchstart", markManual);
       map.off("wheel", markManual);
@@ -167,7 +169,7 @@ export default function RouteMap({
   navigationMode = false,
   showDefaultRoute = false,
   fitRoute = true,
-  localVehicle = null,
+  routeOverride = null,
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
@@ -236,7 +238,8 @@ export default function RouteMap({
     if (navigationMode) setAutoFollow(true);
   }, [navigationMode, plannedRoute?.updatedAt]);
 
-  const liveVehicle = localVehicle || displayVehicle || trackedVehicle;
+  const visibleRoute = routeOverride || plannedRoute;
+  const liveVehicle = displayVehicle || trackedVehicle;
   const heading = Number(liveVehicle?.heading || 0);
   const coachIcon = useMemo(
     () =>
@@ -251,15 +254,15 @@ export default function RouteMap({
   const coachPosition =
     liveVehicle?.lat && liveVehicle?.lng
       ? [liveVehicle.lat, liveVehicle.lng]
-      : plannedRoute?.start
-        ? [plannedRoute.start.lat, plannedRoute.start.lng]
+      : visibleRoute?.start
+        ? [visibleRoute.start.lat, visibleRoute.start.lng]
         : [54.4863, -0.6133];
 
   const speed = mph(liveVehicle?.speedMps);
-  const rawRouteLine = plannedRoute?.geometry?.length > 1 ? plannedRoute.geometry : [];
+  const rawRouteLine = visibleRoute?.geometry?.length > 1 ? visibleRoute.geometry : [];
   const trimIndex = navigationMode && liveVehicle ? Math.max(0, nearestRouteIndex(liveVehicle, rawRouteLine) - 2) : 0;
   const activeRouteLine = rawRouteLine.slice(trimIndex);
-  const routeId = plannedRoute?.updatedAt || `${activeRouteLine.length}-${plannedRoute?.destination || "none"}`;
+  const routeId = visibleRoute?.updatedAt || `${activeRouteLine.length}-${visibleRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;
   void showDefaultRoute;
   const center = navigationMode || followCoach ? coachPosition : coachPosition || [52.6, -0.6];
@@ -278,7 +281,7 @@ export default function RouteMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {!localVehicle && <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />}
+      <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />
 
       <FitMapToRoute
         positions={activeRouteLine}
@@ -298,37 +301,37 @@ export default function RouteMap({
         <>
           <Polyline
             positions={activeRouteLine}
-            pathOptions={{ color: "#ffffff", weight: navigationMode ? 8 : 10, opacity: 0.9 }}
+            pathOptions={{ color: "#ffffff", weight: 10, opacity: 0.95 }}
           />
           <Polyline
             positions={activeRouteLine}
-            pathOptions={{ color: "#20d86b", weight: navigationMode ? 4 : 6, opacity: 1 }}
+            pathOptions={{ color: "#20d86b", weight: 6, opacity: 1 }}
           />
         </>
       )}
 
 
-      {!navigationMode && plannedRoute?.start && (
-        <Marker position={[plannedRoute.start.lat, plannedRoute.start.lng]} icon={stopIcon}>
-          <Popup><strong>Start</strong><br />{plannedRoute.start.label}</Popup>
+      {!navigationMode && visibleRoute?.start && (
+        <Marker position={[visibleRoute.start.lat, visibleRoute.start.lng]} icon={stopIcon}>
+          <Popup><strong>Start</strong><br />{visibleRoute.start.label}</Popup>
         </Marker>
       )}
 
-      {!navigationMode && plannedRoute?.waypoints?.map((stop, index) => (
+      {!navigationMode && visibleRoute?.waypoints?.map((stop, index) => (
         <Marker key={`${stop.label}-${index}`} position={[stop.lat, stop.lng]} icon={plannedStopIcon}>
           <Popup><strong>Stop {index + 1}</strong><br />{stop.label}</Popup>
         </Marker>
       ))}
 
-      {!navigationMode && plannedRoute?.waypointPoint && !plannedRoute?.waypoints?.length && (
-        <Marker position={[plannedRoute.waypointPoint.lat, plannedRoute.waypointPoint.lng]} icon={plannedStopIcon}>
-          <Popup><strong>Stop</strong><br />{plannedRoute.waypoint}</Popup>
+      {!navigationMode && visibleRoute?.waypointPoint && !visibleRoute?.waypoints?.length && (
+        <Marker position={[visibleRoute.waypointPoint.lat, visibleRoute.waypointPoint.lng]} icon={plannedStopIcon}>
+          <Popup><strong>Stop</strong><br />{visibleRoute.waypoint}</Popup>
         </Marker>
       )}
 
-      {plannedRoute?.end && (
-        <Marker position={[plannedRoute.end.lat, plannedRoute.end.lng]} icon={plannedStopIcon}>
-          <Popup><strong>Destination</strong><br />{plannedRoute.destination}</Popup>
+      {visibleRoute?.end && (
+        <Marker position={[visibleRoute.end.lat, visibleRoute.end.lng]} icon={plannedStopIcon}>
+          <Popup><strong>Destination</strong><br />{visibleRoute.destination}</Popup>
         </Marker>
       )}
 

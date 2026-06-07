@@ -23,7 +23,7 @@ async function getVehicleStart(vehicle) {
   return { ...depotStart, label: `${vehicle.depot || "Depot"} fallback start` };
 }
 
-export default function OfficeRouteTools({ selectedFleet }) {
+export default function OfficeRouteTools({ selectedFleet, onRouteBuilt, onRouteCleared }) {
   const [destination, setDestination] = useState("");
   const [stopInput, setStopInput] = useState("");
   const [stops, setStops] = useState([]);
@@ -56,6 +56,7 @@ export default function OfficeRouteTools({ selectedFleet }) {
 
   const clearRoute = async () => {
     setRoute(null);
+    onRouteCleared?.();
     setDestination("");
     setStops([]);
     setStopInput("");
@@ -116,6 +117,7 @@ export default function OfficeRouteTools({ selectedFleet }) {
       });
 
       setRoute(built);
+      onRouteBuilt?.(built);
       setStatus(`Route ready: ${built.distanceMiles} miles · ${built.durationMinutes} mins · ${built.engine}`);
       return built;
     } catch (error) {
@@ -158,6 +160,7 @@ export default function OfficeRouteTools({ selectedFleet }) {
           message: `New route available: ${stops.length ? `${stops.join(" → ")} → ` : ""}${destination}`,
         }),
       });
+      onRouteBuilt?.(built);
       setStatus(`Route pushed to ${selectedFleet.fleetNo} / ${selectedFleet.reg}.`);
     } catch (error) {
       console.error(error);
