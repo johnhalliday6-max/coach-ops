@@ -98,10 +98,10 @@ function formatDistance(step) {
 }
 
 export default function DriverView({ selectedFleet }) {
-  const defaultVehicle =
-    fleetData.find((vehicle) => vehicle.reg === "YJ72 CGG") ||
-    selectedFleet ||
-    fleetData[0];
+  // Never default every driver session to the CGG test coach.
+  // The selected/phone vehicle must be the source of truth so 200+ coaches
+  // can each have their own tracking, route push and active route.
+  const defaultVehicle = selectedFleet || fleetData[0];
 
   const [vehicle, setVehicle] = useState(defaultVehicle);
   const [vehicleSelected, setVehicleSelected] = useState(false);
@@ -122,6 +122,7 @@ export default function DriverView({ selectedFleet }) {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [offRoute, setOffRoute] = useState(false);
   const [trafficFlow, setTrafficFlow] = useState(null);
+  const selectedVehicleRef = useRef(defaultVehicle.fleetNo);
   const watchId = useRef(null);
   const rerouteLock = useRef(false);
   const wakeLockRef = useRef(null);
@@ -344,18 +345,23 @@ export default function DriverView({ selectedFleet }) {
   const applyRouteToDriver = async (route, sourceText = "Route loaded") => {
     if (!route) return;
     await fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`, { method: "DELETE" }).catch(() => {});
+    const routeForVehicle = {
+      ...route,
+      fleetNo: vehicle.fleetNo,
+      reg: vehicle.reg,
+      operator: vehicle.operator,
+      depot: vehicle.depot,
+      updatedAt: new Date().toISOString(),
+    };
+
     await fetch("/api/routes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fleetNo: vehicle.fleetNo,
-        reg: vehicle.reg,
-        ...route,
-      }),
+      body: JSON.stringify(routeForVehicle),
     });
-    setDestination(route.destination || destination);
-    setStops(Array.isArray(route.stops) ? route.stops : []);
-    setRouteSummary(route);
+    setDestination(routeForVehicle.destination || destination);
+    setStops(Array.isArray(routeForVehicle.stops) ? routeForVehicle.stops : []);
+    setRouteSummary(routeForVehicle);
     setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
     setLastAction(sourceText);
     setNavMode(true);
@@ -544,7 +550,17 @@ export default function DriverView({ selectedFleet }) {
               <button
                 key={item.fleetNo}
                 className={item.fleetNo === vehicle.fleetNo ? "vehicle-select active" : "vehicle-select"}
-                onClick={() => setVehicle(item)}
+                onClick={() => {
+                  setVehicle(item);
+                  selectedVehicleRef.current = item.fleetNo;
+                  setRouteSummary(null);
+                  setPendingRoutePush(null);
+                  setNavMode(false);
+                  setDestination("");
+                  setStops([]);
+                  setRouteStatus(`Selected ${item.fleetNo} / ${item.reg}`);
+                  setLastAction(`Selected ${item.fleetNo} / ${item.reg}`);
+                }}
               >
                 <strong>{item.fleetNo}</strong>
                 <span>{item.reg}</span>
@@ -555,6 +571,7 @@ export default function DriverView({ selectedFleet }) {
           <button
             className="driver-start-button"
             onClick={() => {
+              selectedVehicleRef.current = vehicle.fleetNo;
               setVehicleSelected(true);
               setLastAction(`Vehicle assigned: ${vehicle.fleetNo} / ${vehicle.reg}`);
               window.setTimeout(startTracking, 0);
