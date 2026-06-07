@@ -9,7 +9,7 @@ import RouteMap from "./components/RouteMap";
 import HighwaysLive from "./components/HighwaysLive";
 import DriverView from "./components/DriverView";
 import OfficeRouteTools from "./components/OfficeRouteTools";
-import { savedRoutes } from "./data/savedRoutes";
+import RouteLibraryPage from "./components/RouteLibraryPage";
 
 function App() {
   const [selectedFleet, setSelectedFleet] = useState(fleetData[0]);
@@ -23,10 +23,6 @@ function App() {
   );
   const [officeRequests, setOfficeRequests] = useState([]);
   const [activeOfficeRoute, setActiveOfficeRoute] = useState(null);
-  const [officeRouteCache, setOfficeRouteCache] = useState({});
-  const [mapPickMode, setMapPickMode] = useState(null);
-  const [officeMapStops, setOfficeMapStops] = useState([]);
-  const [officeMapDestination, setOfficeMapDestination] = useState(null);
 
   useEffect(() => {
     if (isDriverOnly) return undefined;
@@ -57,17 +53,16 @@ function App() {
     if (isDriverOnly || !selectedFleet?.fleetNo) return undefined;
 
     let cancelled = false;
+    setActiveOfficeRoute((current) => current?.fleetNo === selectedFleet.fleetNo ? current : null);
     const loadActiveRoute = () => {
       fetch(`/api/routes?vehicle=${encodeURIComponent(selectedFleet.fleetNo)}`)
         .then((res) => res.json())
         .then((data) => {
-          if (cancelled || !data?.ok) return;
-          if (data.route) {
-            setActiveOfficeRoute(data.route);
-            setOfficeRouteCache((current) => ({ ...current, [selectedFleet.fleetNo]: data.route }));
-            return;
+          if (!cancelled && data?.ok) {
+            if (data.route) setActiveOfficeRoute(data.route);
+            // Do not wipe a visible office route just because a transient
+            // serverless/Supabase read returns null between driver accept/save.
           }
-          setActiveOfficeRoute((current) => current || officeRouteCache[selectedFleet.fleetNo] || null);
         })
         .catch((err) => console.error("Office active route fetch failed", err));
     };
@@ -78,91 +73,6 @@ function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isDriverOnly, selectedFleet?.fleetNo]);
-
-  const handleOfficeRouteBuilt = (route) => {
-    setActiveOfficeRoute(route);
-    if (route?.fleetNo) {
-      setOfficeRouteCache((current) => ({ ...current, [route.fleetNo]: route }));
-    }
-  };
-
-  const handleOfficeRouteCleared = () => {
-    setActiveOfficeRoute(null);
-    setOfficeRouteCache((current) => {
-      const next = { ...current };
-      delete next[selectedFleet.fleetNo];
-      return next;
-    });
-  };
-
-  const handleOfficeMapPoint = (point) => {
-    if (mapPickMode === "destination") {
-      setOfficeMapDestination({ ...point, label: point.label || "Map destination" });
-      setMapPickMode(null);
-      return;
-    }
-    if (mapPickMode === "stop") {
-      setOfficeMapStops((current) => [...current, { ...point, label: point.label || `Map stop ${current.length + 1}` }]);
-      setMapPickMode(null);
-    }
-  };
-
-  const loadSavedRouteForSelectedCoach = async (savedRoute) => {
-    if (!savedRoute?.stops?.length || savedRoute.stops.length < 2) return;
-    const [startPoint, ...rest] = savedRoute.stops;
-    const destinationPoint = rest[rest.length - 1];
-    const waypointPoints = rest.slice(0, -1);
-
-    try {
-      const response = await fetch("/api/route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startLat: startPoint.lat,
-          startLng: startPoint.lng,
-          destination: destinationPoint.label,
-          destinationPoint,
-          stops: waypointPoints,
-          height: selectedFleet.height,
-          width: selectedFleet.width,
-          length: selectedFleet.length,
-          weight: selectedFleet.weight,
-        }),
-      });
-      const data = await response.json();
-      if (!data?.ok) {
-        alert(data?.error || "Saved route failed");
-        return;
-      }
-      const built = {
-        ...data.route,
-        fleetNo: selectedFleet.fleetNo,
-        reg: selectedFleet.reg,
-        destination: destinationPoint.label,
-        stops: waypointPoints,
-        savedRouteId: savedRoute.id,
-        savedRouteName: savedRoute.name,
-        start: startPoint,
-        updatedAt: new Date().toISOString(),
-      };
-      await fetch("/api/routes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(built),
-      });
-      handleOfficeRouteBuilt(built);
-      setActivePage("dashboard");
-    } catch (error) {
-      console.error(error);
-      alert("Could not load saved route");
-    }
-  };
-
-
-  useEffect(() => {
-    if (isDriverOnly || !selectedFleet?.fleetNo) return;
-    setActiveOfficeRoute(officeRouteCache[selectedFleet.fleetNo] || null);
   }, [isDriverOnly, selectedFleet?.fleetNo]);
 
   const sendOfficeRoutePush = async () => {
@@ -387,27 +297,14 @@ function App() {
               </div>
 
               <div className="map-panel">
-                <RouteMap
-                  fleetNo={selectedFleet.fleetNo}
-                  reg={selectedFleet.reg}
-                  routeOverride={activeOfficeRoute}
-                  planningMode={Boolean(mapPickMode)}
-                  onMapPoint={handleOfficeMapPoint}
-                  manualPoints={[...officeMapStops, ...(officeMapDestination ? [officeMapDestination] : [])]}
-                />
+                <RouteMap fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} routeOverride={activeOfficeRoute} />
               </div>
 
               <div className="tools-panel">
                 <OfficeRouteTools
                   selectedFleet={selectedFleet}
-                  onRouteBuilt={handleOfficeRouteBuilt}
-                  onRouteCleared={handleOfficeRouteCleared}
-                  mapPickMode={mapPickMode}
-                  setMapPickMode={setMapPickMode}
-                  mapStops={officeMapStops}
-                  setMapStops={setOfficeMapStops}
-                  mapDestination={officeMapDestination}
-                  setMapDestination={setOfficeMapDestination}
+                  onRouteBuilt={setActiveOfficeRoute}
+                  onRouteCleared={() => setActiveOfficeRoute(null)}
                 />
               </div>
             </section>
@@ -439,33 +336,6 @@ function App() {
               </div>
             </section>
           </>
-        )}
-
-
-        {activePage === "routes" && (
-          <section className="page">
-            <h2>Route Library</h2>
-            <p>Saved school runs, airport jobs and cover routes. Select one to plot it for the currently selected coach.</p>
-            <div className="saved-route-grid">
-              {savedRoutes.map((route) => (
-                <article className="saved-route-card" key={route.id}>
-                  <div>
-                    <h3>{route.name}</h3>
-                    <span>{route.type} · {route.operator}</span>
-                  </div>
-                  <p>{route.notes}</p>
-                  <ol>
-                    {route.stops.map((stop) => (
-                      <li key={`${route.id}-${stop.label}`}>{stop.shortLabel || stop.label}</li>
-                    ))}
-                  </ol>
-                  <button type="button" onClick={() => loadSavedRouteForSelectedCoach(route)}>
-                    Plot for {selectedFleet.fleetNo}
-                  </button>
-                </article>
-              ))}
-            </div>
-          </section>
         )}
 
         {activePage === "fleet" && (
@@ -589,6 +459,14 @@ function App() {
 
         {activePage === "driver" && (
           <DriverView selectedFleet={selectedFleet} />
+        )}
+
+        {activePage === "routes" && (
+          <RouteLibraryPage
+            selectedFleet={selectedFleet}
+            onRouteBuilt={setActiveOfficeRoute}
+            onSelectDashboard={() => setActivePage("dashboard")}
+          />
         )}
 
         {activePage !== "dashboard" &&

@@ -74,26 +74,6 @@ async function geocode(query) {
   return null
 }
 
-function normalisePoint(value) {
-  if (!value || typeof value !== 'object') return null
-  const lat = Number(value.lat)
-  const lng = Number(value.lng)
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-  return {
-    lat,
-    lng,
-    label: value.label || value.shortLabel || 'Map point',
-    shortLabel: value.shortLabel || value.label || 'Map point',
-    input: value.input || value.label || 'Map point',
-  }
-}
-
-async function resolvePoint(value) {
-  const point = normalisePoint(value)
-  if (point) return point
-  return geocode(String(value || '').trim())
-}
-
 function decodeValhallaShape(str, precision = 6) {
   if (!str) return []
   let index = 0
@@ -257,9 +237,9 @@ export default async function handler(req, res) {
     const body = req.body || {}
     const startLat = Number(body.startLat)
     const startLng = Number(body.startLng)
-    const destination = String(body.destination || body.destinationPoint?.label || '').trim()
-    const rawStops = Array.isArray(body.stops)
-      ? body.stops.filter(Boolean)
+    const destination = String(body.destination || '').trim()
+    const stops = Array.isArray(body.stops)
+      ? body.stops.map((item) => String(item || '').trim()).filter(Boolean)
       : String(body.waypoint || '').trim()
         ? [String(body.waypoint || '').trim()]
         : []
@@ -267,20 +247,18 @@ export default async function handler(req, res) {
     if (!Number.isFinite(startLat) || !Number.isFinite(startLng)) {
       return res.status(400).json({ ok: false, error: 'Missing current GPS location' })
     }
-    if (!destination && !body.destinationPoint) return res.status(400).json({ ok: false, error: 'Missing destination' })
+    if (!destination) return res.status(400).json({ ok: false, error: 'Missing destination' })
 
-    const end = normalisePoint(body.destinationPoint) || await geocode(destination)
+    const end = await geocode(destination)
     if (!end) return res.status(404).json({ ok: false, error: 'Destination not found' })
 
     const waypointPoints = []
-    for (const stop of rawStops) {
-      const point = await resolvePoint(stop)
-      const label = typeof stop === 'string' ? stop : stop?.label || stop?.shortLabel || 'Map stop'
-      if (!point) return res.status(404).json({ ok: false, error: `Stop not found: ${label}` })
-      waypointPoints.push({ ...point, input: label })
+    for (const stop of stops) {
+      const point = await geocode(stop)
+      if (!point) return res.status(404).json({ ok: false, error: `Stop not found: ${stop}` })
+      waypointPoints.push({ ...point, input: stop })
     }
 
-    const stops = rawStops.map((stop) => typeof stop === 'string' ? stop : stop?.label || stop?.shortLabel || 'Map stop')
     const points = [{ lat: startLat, lng: startLng, label: 'Current Location' }, ...waypointPoints, end]
 
     let built
