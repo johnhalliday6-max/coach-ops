@@ -1651,3 +1651,50 @@ body {
 .driver-satnav-map .leaflet-control-zoom {
   margin-top: 92px;
 }
+
+
+/* Navigation V2 stabilisation patch */
+.satnav-instruction-card {
+  grid-template-columns: 68px 1fr;
+  padding: 7px 9px;
+}
+.satnav-distance {
+  font-size: 18px;
+  padding: 8px 5px;
+}
+.satnav-instruction-card h1 {
+  font-size: clamp(16px, 3vw, 24px);
+}
+.satnav-instruction-card p {
+  font-size: 13px;
+}
+.satnav-eta-strip {
+  top: 78px;
+}
+.satnav-speed-panel {
+  bottom: 76px;
+}
+.speed-limit-circle,
+.current-speed-box {
+  width: 68px;
+  height: 68px;
+  border-width: 7px;
+}
+.speed-limit-circle strong,
+.current-speed-box strong {
+  font-size: 21px;
+}
+.satnav-actions {
+  left: 88px;
+}
+.satnav-actions button {
+  padding: 13px 10px;
+}
+.map-recenter-button,
+.map-follow-badge {
+  bottom: 152px;
+}
+.coach-live-dot small {
+  top: 34px;
+  font-size: 9px;
+}

@@ -77,13 +77,11 @@ function ManualMapWatcher({ enabled, onManualMove }) {
     if (!enabled) return undefined;
     const markManual = () => onManualMove?.();
     map.on("dragstart", markManual);
-    map.on("zoomstart", markManual);
     map.on("mousedown", markManual);
     map.on("touchstart", markManual);
     map.on("wheel", markManual);
     return () => {
       map.off("dragstart", markManual);
-      map.off("zoomstart", markManual);
       map.off("mousedown", markManual);
       map.off("touchstart", markManual);
       map.off("wheel", markManual);
@@ -169,6 +167,7 @@ export default function RouteMap({
   navigationMode = false,
   showDefaultRoute = false,
   fitRoute = true,
+  localVehicle = null,
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
@@ -237,7 +236,7 @@ export default function RouteMap({
     if (navigationMode) setAutoFollow(true);
   }, [navigationMode, plannedRoute?.updatedAt]);
 
-  const liveVehicle = displayVehicle || trackedVehicle;
+  const liveVehicle = localVehicle || displayVehicle || trackedVehicle;
   const heading = Number(liveVehicle?.heading || 0);
   const coachIcon = useMemo(
     () =>
@@ -279,7 +278,7 @@ export default function RouteMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />
+      {!localVehicle && <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />}
 
       <FitMapToRoute
         positions={activeRouteLine}
@@ -299,11 +298,11 @@ export default function RouteMap({
         <>
           <Polyline
             positions={activeRouteLine}
-            pathOptions={{ color: "#ffffff", weight: 10, opacity: 0.95 }}
+            pathOptions={{ color: "#ffffff", weight: navigationMode ? 8 : 10, opacity: 0.9 }}
           />
           <Polyline
             positions={activeRouteLine}
-            pathOptions={{ color: "#20d86b", weight: 6, opacity: 1 }}
+            pathOptions={{ color: "#20d86b", weight: navigationMode ? 4 : 6, opacity: 1 }}
           />
         </>
       )}
