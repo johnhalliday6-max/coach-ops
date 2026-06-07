@@ -157,6 +157,12 @@ export default function DriverView({ selectedFleet }) {
     return metresBetween(lastPosition, nextStep.location);
   }, [lastPosition, nextStep]);
 
+  const companies = useMemo(() => [...new Set(fleetData.map((item) => item.category || item.operator))], []);
+  const companyVehicles = useMemo(
+    () => fleetData.filter((item) => (item.category || item.operator) === selectedCompany),
+    [selectedCompany],
+  );
+
   const remainingNav = useMemo(() => {
     const steps = (routeSummary?.instructions || []).slice(activeStepIndex);
     if (!steps.length) {
@@ -696,12 +702,6 @@ export default function DriverView({ selectedFleet }) {
       </main>
     );
   }
-
-  const companies = useMemo(() => [...new Set(fleetData.map((item) => item.category || item.operator))], []);
-  const companyVehicles = useMemo(
-    () => fleetData.filter((item) => (item.category || item.operator) === selectedCompany),
-    [selectedCompany],
-  );
 
   const latestOfficeMessages = officeRequests.filter((item) => item.source === "office");
 
