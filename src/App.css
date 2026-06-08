@@ -2528,3 +2528,26 @@ body {
     height: 360px;
   }
 }
+
+.route-push-target-row {
+  margin: 14px 0 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(15, 31, 55, 0.06);
+}
+
+.route-push-target-row label {
+  display: grid;
+  gap: 6px;
+  font-weight: 800;
+  color: #102033;
+}
+
+.route-push-target-row select {
+  min-height: 42px;
+  border: 1px solid #ccd8e8;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-weight: 700;
+  background: white;
+}

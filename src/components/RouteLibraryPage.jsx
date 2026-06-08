@@ -3,6 +3,7 @@ import { MapContainer, Marker, Polyline, Popup, TileLayer, useMapEvents } from '
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { deleteCustomRoute, loadRouteLibrary, saveCustomRoute } from '../data/routeLibrary';
+import { fleetData } from '../data/fleetData';
 import { buildVehicleRoute, pushRouteToDriver, saveActiveRoute } from '../shared/routePlanning';
 import PlaceSearchBox from './PlaceSearchBox';
 
@@ -18,6 +19,17 @@ function makeId(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || `route-${Date.now()}`;
+}
+
+
+function getManagedFleet() {
+  if (typeof window === 'undefined') return fleetData;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem('coachOpsManagedFleet') || 'null');
+    return Array.isArray(stored) && stored.length ? stored : fleetData;
+  } catch {
+    return fleetData;
+  }
 }
 
 function blankForm(selectedFleet) {
@@ -64,6 +76,14 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(true);
   const [form, setForm] = useState(blankForm(selectedFleet));
+  const [targetFleetNo, setTargetFleetNo] = useState(selectedFleet?.fleetNo || '');
+
+  const availableFleet = useMemo(() => getManagedFleet(), []);
+  const targetFleet = useMemo(() => availableFleet.find((item) => item.fleetNo === targetFleetNo) || selectedFleet, [availableFleet, targetFleetNo, selectedFleet]);
+
+  useEffect(() => {
+    if (selectedFleet?.fleetNo) setTargetFleetNo(selectedFleet.fleetNo);
+  }, [selectedFleet?.fleetNo]);
 
   const selectedRoute = useMemo(
     () => routes.find((route) => route.id === selectedRouteId) || null,
@@ -212,13 +232,14 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     }
 
     setBusy(true);
-    setStatus(`${push ? 'Pushing' : 'Plotting'} ${selectedRoute.number} for ${selectedFleet.fleetNo}...`);
+    const routeVehicle = push ? targetFleet : selectedFleet;
+    setStatus(`${push ? 'Pushing' : 'Plotting'} ${selectedRoute.number} for ${routeVehicle.fleetNo}...`);
     try {
-      const built = await buildVehicleRoute(selectedFleet, selectedRoute);
+      const built = await buildVehicleRoute(routeVehicle, selectedRoute);
       await saveActiveRoute(built);
       onRouteBuilt?.(built);
-      if (push) await pushRouteToDriver(selectedFleet, built);
-      setStatus(`${selectedRoute.number} ${push ? 'pushed' : 'plotted'} for ${selectedFleet.fleetNo}: ${built.distanceMiles} miles · ${built.durationMinutes} mins.`);
+      if (push) await pushRouteToDriver(routeVehicle, built);
+      setStatus(`${selectedRoute.number} ${push ? 'pushed' : 'plotted'} for ${routeVehicle.fleetNo}: ${built.distanceMiles} miles · ${built.durationMinutes} mins.`);
       onSelectDashboard?.();
     } catch (error) {
       console.error(error);
@@ -341,6 +362,19 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
             <label className="builder-notes">Notes<textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Contract notes, access instructions, pickup notes..." /></label>
           )}
 
+          {!editing && selectedRoute && (
+            <div className="route-push-target-row">
+              <label>
+                Push to coach
+                <select value={targetFleetNo} onChange={(event) => setTargetFleetNo(event.target.value)}>
+                  {availableFleet.map((item) => (
+                    <option key={item.fleetNo} value={item.fleetNo}>{item.fleetNo} / {item.reg} · {item.depot}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
           <div className="route-library-actions route-builder-actions">
             {editing ? (
               <>
@@ -350,7 +384,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
             ) : (
               <>
                 <button disabled={busy || !selectedRoute} onClick={() => plotRoute({ push: false })}>🗺 Plot on Office Map</button>
-                <button disabled={busy || !selectedRoute} onClick={() => plotRoute({ push: true })}>📲 Push to Driver</button>
+                <button disabled={busy || !selectedRoute || !targetFleet} onClick={() => plotRoute({ push: true })}>📲 Push to Selected Coach</button>
                 <button disabled={busy || !selectedRoute} className="danger-soft" onClick={deleteRoute}>Delete</button>
               </>
             )}

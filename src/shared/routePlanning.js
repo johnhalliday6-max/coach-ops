@@ -32,14 +32,31 @@ export async function clearVehicleRoute(vehicle) {
 }
 
 export async function buildVehicleRoute(vehicle, routeInput) {
-  const destination = String(routeInput.destination || '').trim();
-  if (!destination) throw new Error('Destination required');
-
-  const stops = Array.isArray(routeInput.stops)
-    ? routeInput.stops.map((item) => String(item).trim()).filter(Boolean)
+  const directPoints = Array.isArray(routeInput.plotPoints)
+    ? routeInput.plotPoints
+        .map((point) => ({
+          lat: Number(point.lat),
+          lng: Number(point.lng),
+          label: String(point.label || point.name || 'Route point'),
+        }))
+        .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
     : [];
 
-  const start = await getVehicleStart(vehicle);
+  const destination = String(
+    routeInput.destination || directPoints[directPoints.length - 1]?.label || ''
+  ).trim();
+  if (!destination) throw new Error('Destination required');
+
+  const stops = directPoints.length >= 2
+    ? directPoints.slice(1, -1).map((point) => point.label)
+    : Array.isArray(routeInput.stops)
+      ? routeInput.stops.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+
+  const start = directPoints.length >= 2
+    ? { lat: directPoints[0].lat, lng: directPoints[0].lng, label: directPoints[0].label }
+    : await getVehicleStart(vehicle);
+
   const response = await fetch('/api/route', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -48,6 +65,7 @@ export async function buildVehicleRoute(vehicle, routeInput) {
       startLng: start.lng,
       destination,
       stops,
+      points: directPoints.length >= 2 ? directPoints : undefined,
       height: vehicle.height,
       width: vehicle.width,
       length: vehicle.length,

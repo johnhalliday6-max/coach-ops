@@ -17,6 +17,26 @@ const DRIVER_TEST_PROFILES = {
   },
 };
 
+
+function readDriverSession() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const session = JSON.parse(window.localStorage.getItem('coachOpsDriverSession') || 'null');
+    return session && session.employeeId ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDriverSession(profile, vehicle) {
+  if (typeof window === 'undefined' || !profile || !vehicle) return;
+  window.localStorage.setItem('coachOpsDriverSession', JSON.stringify({
+    employeeId: profile.employeeId,
+    fleetNo: vehicle.fleetNo,
+    savedAt: new Date().toISOString(),
+  }));
+}
+
 function getManagedFleet() {
   try {
     const stored = JSON.parse(window.localStorage.getItem("coachOpsManagedFleet") || "null");
@@ -122,11 +142,17 @@ export default function DriverView({ selectedFleet }) {
   // Never default every driver session to the CGG test coach.
   // The selected/phone vehicle must be the source of truth so 200+ coaches
   // can each have their own tracking, route push and active route.
-  const defaultVehicle = selectedFleet || getManagedFleet()[0] || fleetData[0];
+  const availableFleetAtStart = getManagedFleet();
+  const savedSession = readDriverSession();
+  const savedProfile = savedSession?.employeeId ? DRIVER_TEST_PROFILES[savedSession.employeeId] : null;
+  const savedVehicle = savedSession?.fleetNo
+    ? availableFleetAtStart.find((item) => item.fleetNo === savedSession.fleetNo)
+    : null;
+  const defaultVehicle = savedVehicle || selectedFleet || availableFleetAtStart[0] || fleetData[0];
 
   const [vehicle, setVehicle] = useState(defaultVehicle);
-  const [vehicleSelected, setVehicleSelected] = useState(false);
-  const [driverProfile, setDriverProfile] = useState(null);
+  const [vehicleSelected, setVehicleSelected] = useState(Boolean(savedProfile));
+  const [driverProfile, setDriverProfile] = useState(savedProfile || null);
   const [selectedCompany, setSelectedCompany] = useState("Esk Valley Coaches");
   const [employeeIdInput, setEmployeeIdInput] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -237,6 +263,7 @@ export default function DriverView({ selectedFleet }) {
     const assignedVehicle = availableFleet.find((item) => item.fleetNo === profile.preferredFleetNo) || vehicle || availableFleet[0] || fleetData[0];
     setDriverProfile(profile);
     setVehicle(assignedVehicle);
+    writeDriverSession(profile, assignedVehicle);
     selectedVehicleRef.current = assignedVehicle.fleetNo;
     currentVehicleRef.current = assignedVehicle;
     setVehicleSelected(true);
@@ -252,6 +279,7 @@ export default function DriverView({ selectedFleet }) {
 
   const switchVehicle = (item) => {
     setVehicle(item);
+    writeDriverSession(driverProfile, item);
     selectedVehicleRef.current = item.fleetNo;
     currentVehicleRef.current = item;
     clearLocalRouteState();

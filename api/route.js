@@ -237,12 +237,50 @@ export default async function handler(req, res) {
     const body = req.body || {}
     const startLat = Number(body.startLat)
     const startLng = Number(body.startLng)
-    const destination = String(body.destination || '').trim()
+    const rawPoints = Array.isArray(body.points)
+      ? body.points
+          .map((point) => ({
+            lat: Number(point.lat),
+            lng: Number(point.lng),
+            label: String(point.label || point.name || 'Route point'),
+          }))
+          .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
+      : []
+    const destination = String(body.destination || rawPoints[rawPoints.length - 1]?.label || '').trim()
     const stops = Array.isArray(body.stops)
       ? body.stops.map((item) => String(item || '').trim()).filter(Boolean)
       : String(body.waypoint || '').trim()
         ? [String(body.waypoint || '').trim()]
         : []
+
+    if (rawPoints.length >= 2) {
+      const points = rawPoints
+      const end = points[points.length - 1]
+      const waypointPoints = points.slice(1, -1).map((point) => ({ ...point, input: point.label }))
+      let built
+      try {
+        built = await buildValhallaRoute(points, body)
+      } catch (error) {
+        console.warn('Valhalla failed for plotted route, falling back to OSRM', error.message)
+        built = await buildOsrmRoute(points)
+      }
+
+      return res.status(200).json({
+        ok: true,
+        route: {
+          start: { ...points[0], label: points[0].label || 'Route start' },
+          end,
+          waypointPoint: waypointPoints[0] || null,
+          waypoints: waypointPoints,
+          destination,
+          waypoint: waypointPoints.map((point) => point.label).join(' → '),
+          stops: waypointPoints.map((point) => point.label),
+          plotPoints: points,
+          ...built,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+    }
 
     if (!Number.isFinite(startLat) || !Number.isFinite(startLng)) {
       return res.status(400).json({ ok: false, error: 'Missing current GPS location' })
