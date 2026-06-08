@@ -2190,3 +2190,113 @@ body {
     min-height: 340px;
   }
 }
+
+.office-login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #06101d, #10294a);
+  color: #0b1220;
+  padding: 24px;
+}
+
+.office-login-card {
+  width: min(430px, 100%);
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 32px;
+  box-shadow: 0 20px 70px rgba(0,0,0,0.35);
+}
+
+.office-login-card img {
+  width: 160px;
+  margin-bottom: 20px;
+}
+
+.office-login-card h1 {
+  margin: 0 0 8px;
+  font-size: 32px;
+}
+
+.office-login-card p {
+  color: #526072;
+  margin-bottom: 20px;
+}
+
+.office-login-card input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.office-login-card button {
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #1268ff;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.office-login-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #d9e7ff;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.topbar-actions button {
+  border: 1px solid #24405f;
+  background: #12243b;
+  color: #ffffff;
+  padding: 8px 11px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.topbar-actions .ghost-button {
+  background: transparent;
+}
+
+.office-status-text,
+.fleet-status-pill {
+  font-weight: 800;
+}
+
+.office-status-text.tracking,
+.fleet-status-pill.tracking {
+  color: #38bdf8;
+}
+
+.office-status-text.route-set,
+.fleet-status-pill.route-set {
+  color: #fbbf24;
+}
+
+.office-status-text.available,
+.fleet-status-pill.available {
+  color: #d1d5db;
+}
+
+.fleet-status-pill {
+  font-size: 13px;
+}

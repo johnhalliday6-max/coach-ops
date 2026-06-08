@@ -22,6 +22,21 @@ function App() {
   const [activePage, setActivePage] = useState(
     isDriverOnly ? "driver" : "dashboard",
   );
+  const OFFICE_TEST_PROFILES = {
+    "1600026": { name: "John Halliday", allowedCompanies: ["All"] },
+    "06032013": { name: "Anna Bonnard-Halliday", allowedCompanies: ["Esk Valley Coaches"] },
+  };
+  const [officeLoginCode, setOfficeLoginCode] = useState("");
+  const [officeLoginError, setOfficeLoginError] = useState("");
+  const [officeProfile, setOfficeProfile] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("coachOpsOfficeProfile") || "null");
+    } catch {
+      return null;
+    }
+  });
+  const [officeCompany, setOfficeCompany] = useState(() => window.localStorage.getItem("coachOpsOfficeCompany") || "All");
+  const [liveVehicles, setLiveVehicles] = useState([]);
   const [officeRequests, setOfficeRequests] = useState([]);
   const [activeOfficeRoute, setActiveOfficeRoute] = useState(null);
   const [officeRouteCache, setOfficeRouteCache] = useState(() => {
@@ -64,6 +79,51 @@ function App() {
     saveOfficeRouteCache(next);
   };
 
+  const isRecentTracking = (vehicle) => {
+    if (!vehicle?.updatedAt) return false;
+    const ageMs = Date.now() - new Date(vehicle.updatedAt).getTime();
+    return Number.isFinite(ageMs) && ageMs < 2 * 60 * 1000;
+  };
+
+  const getLiveVehicle = (vehicle) => {
+    const keys = vehicleRouteKeys(vehicle);
+    return liveVehicles.find((live) => keys.includes(String(live?.fleetNo || "").trim().toUpperCase()) || keys.includes(String(live?.reg || "").trim().toUpperCase()));
+  };
+
+  const getVehicleRoute = (vehicle) => {
+    return vehicleRouteKeys(vehicle).map((key) => officeRouteCacheRef.current[key]).find(Boolean) || null;
+  };
+
+  const getVehicleOfficeStatus = (vehicle) => {
+    const live = getLiveVehicle(vehicle);
+    if (isRecentTracking(live)) return { label: "Tracking", className: "tracking", icon: "📡" };
+    if (getVehicleRoute(vehicle)) return { label: "Route Set", className: "route-set", icon: "🗺️" };
+    return { label: "Available", className: "available", icon: "⚪" };
+  };
+
+  const loginOffice = () => {
+    const code = String(officeLoginCode || "").trim();
+    const profile = OFFICE_TEST_PROFILES[code];
+    if (!profile) {
+      setOfficeLoginError("Staff ID not recognised");
+      return;
+    }
+    setOfficeLoginError("");
+    setOfficeProfile(profile);
+    const company = profile.allowedCompanies.includes("All") ? "All" : profile.allowedCompanies[0];
+    setOfficeCompany(company);
+    setOperatorFilter(company);
+    window.localStorage.setItem("coachOpsOfficeProfile", JSON.stringify(profile));
+    window.localStorage.setItem("coachOpsOfficeCompany", company);
+  };
+
+  const logoutOffice = () => {
+    setOfficeProfile(null);
+    setOfficeLoginCode("");
+    window.localStorage.removeItem("coachOpsOfficeProfile");
+    window.localStorage.removeItem("coachOpsOfficeCompany");
+  };
+
   useEffect(() => {
     if (isDriverOnly) return undefined;
 
@@ -88,6 +148,27 @@ function App() {
       window.clearInterval(timer);
     };
   }, [isDriverOnly]);
+
+  useEffect(() => {
+    if (isDriverOnly || !officeProfile) return undefined;
+
+    let cancelled = false;
+    const loadTracking = () => {
+      fetch(`/api/tracking?_=${Date.now()}`, { cache: "no-store" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ok) setLiveVehicles(data.vehicles || []);
+        })
+        .catch((err) => console.error("Office tracking fetch failed", err));
+    };
+
+    loadTracking();
+    const timer = window.setInterval(loadTracking, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isDriverOnly, officeProfile]);
 
   useEffect(() => {
     if (isDriverOnly || !selectedFleet?.fleetNo) return undefined;
@@ -185,30 +266,49 @@ function App() {
     }
   };
 
-  const operatorCategories = ["All", ...Array.from(new Set(fleetData.map((vehicle) => vehicle.category || vehicle.operator))).sort()];
+  const allOperatorCategories = Array.from(new Set(fleetData.map((vehicle) => vehicle.category || vehicle.operator))).sort();
+  const allowedCompanyOptions = officeProfile?.allowedCompanies?.includes("All")
+    ? ["All", ...allOperatorCategories]
+    : (officeProfile?.allowedCompanies || []);
 
   const filteredFleet = fleetData.filter((vehicle) => {
     const text =
-      `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.category || ""} ${vehicle.depot} ${vehicle.status}`.toLowerCase();
-    const operatorMatch = operatorFilter === "All" || (vehicle.category || vehicle.operator) === operatorFilter;
-    return operatorMatch && text.includes(search.toLowerCase());
+      `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.category || ""} ${vehicle.depot}`.toLowerCase();
+    const company = vehicle.category || vehicle.operator;
+    const companyMatch = officeCompany === "All" || company === officeCompany;
+    return companyMatch && text.includes(search.toLowerCase());
   });
 
-  const getStatusIcon = (status) => {
-    if (status.includes("Incident")) return "🔴";
-    if (status.includes("Delay")) return "🟠";
-    return "🟢";
-  };
-
   const fleetStats = {
-    total: fleetData.length,
-    onRoute: fleetData.filter((v) => v.status.includes("On Route")).length,
-    delayed: fleetData.filter((v) => v.status.includes("Delay")).length,
-    incidents: fleetData.filter((v) => v.status.includes("Incident")).length,
+    total: filteredFleet.length,
+    tracking: filteredFleet.filter((v) => getVehicleOfficeStatus(v).className === "tracking").length,
+    routeSet: filteredFleet.filter((v) => getVehicleOfficeStatus(v).className === "route-set").length,
+    requests: officeRequests.length,
   };
 
   if (isDriverOnly) {
     return <DriverView selectedFleet={selectedFleet} />;
+  }
+
+  if (!officeProfile) {
+    return (
+      <main className="office-login-page">
+        <section className="office-login-card">
+          <img src={logo} alt="Go Ahead" />
+          <h1>Coach Ops Control</h1>
+          <p>Enter your staff ID to open the control room.</p>
+          <input
+            value={officeLoginCode}
+            onChange={(event) => setOfficeLoginCode(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") loginOffice(); }}
+            placeholder="Staff ID"
+            inputMode="numeric"
+          />
+          {officeLoginError && <div className="office-login-error">{officeLoginError}</div>}
+          <button onClick={loginOffice}>Open Control Room</button>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -284,21 +384,26 @@ function App() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <div>Alerts 🔴 3 &nbsp;&nbsp; Messages 🔴 7</div>
+          <div className="topbar-actions">
+            <span>Control: {officeProfile.name}</span>
+            <button onClick={() => setActivePage("incidents")}>Alerts {fleetStats.requests}</button>
+            <button onClick={() => setActivePage("drivers")}>Messages {officeRequests.length}</button>
+            <button className="ghost-button" onClick={logoutOffice}>Logout</button>
+          </div>
         </header>
 
         <section className="statusbar">
           <strong>Fleet: {selectedFleet.fleetNo}</strong>
           <strong>Depot: {selectedFleet.depot}</strong>
           <strong>Route: {activeOfficeRoute?.destination || "No active route"}</strong>
-          <span className="green">{selectedFleet.status}</span>
+          <span className={`office-status-text ${getVehicleOfficeStatus(selectedFleet).className}`}>{getVehicleOfficeStatus(selectedFleet).label}</span>
         </section>
 
         <section className="statsbar">
-          <div>🚍 Total: {fleetStats.total}</div>
-          <div>🟢 On Route: {fleetStats.onRoute}</div>
-          <div>🟠 Delayed: {fleetStats.delayed}</div>
-          <div>🔴 Incidents: {fleetStats.incidents}</div>
+          <div>🚍 Visible: {fleetStats.total}</div>
+          <div>📡 Tracking: {fleetStats.tracking}</div>
+          <div>🗺️ Routes Set: {fleetStats.routeSet}</div>
+          <div>📨 Requests: {fleetStats.requests}</div>
         </section>
 
         {officeRequests.length > 0 && (
@@ -329,10 +434,14 @@ function App() {
                 <h4>SELECT FLEET</h4>
                 <select
                   className="operator-filter"
-                  value={operatorFilter}
-                  onChange={(event) => setOperatorFilter(event.target.value)}
+                  value={officeCompany}
+                  onChange={(event) => {
+                    setOfficeCompany(event.target.value);
+                    setOperatorFilter(event.target.value);
+                    window.localStorage.setItem("coachOpsOfficeCompany", event.target.value);
+                  }}
                 >
-                  {operatorCategories.map((category) => (
+                  {allowedCompanyOptions.map((category) => (
                     <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
@@ -348,9 +457,9 @@ function App() {
                     onClick={() => setSelectedFleet(vehicle)}
                   >
                     <strong>
-                      {getStatusIcon(vehicle.status)} {vehicle.fleetNo}
+                      {getVehicleOfficeStatus(vehicle).icon} {vehicle.fleetNo}
                     </strong>
-                    <span>{vehicle.status}</span>
+                    <span className={`fleet-status-pill ${getVehicleOfficeStatus(vehicle).className}`}>{getVehicleOfficeStatus(vehicle).label}</span>
                   </div>
                 ))}
 
