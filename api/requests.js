@@ -1,4 +1,5 @@
 import { hasSupabase, supabaseFetch } from './lib/storage.js'
+import { fleetData } from '../src/data/fleetData.js'
 
 const store = globalThis.__coachOpsRequestsStore || []
 globalThis.__coachOpsRequestsStore = store
@@ -12,12 +13,21 @@ function memoryRequests(vehicleId, includeClosed) {
     .filter((item) => includeClosed || item.status !== 'closed')
 }
 
+function companyForVehicle(vehicleId) {
+  const clean = cleanVehicleId(vehicleId)
+  const match = fleetData.find((vehicle) => cleanVehicleId(vehicle.fleetNo) === clean || cleanVehicleId(vehicle.reg) === clean)
+  return match?.category || match?.operator || 'Unknown'
+}
+
 function fromDbIncident(row) {
+  const company = companyForVehicle(row.vehicle)
   return {
     id: String(row.id),
     fleetNo: cleanVehicleId(row.vehicle),
     reg: cleanVehicleId(row.vehicle),
-    operator: 'Esk Valley',
+    operator: company,
+    category: company,
+    company,
     depot: 'Whitby',
     type: row.type || 'MESSAGE',
     message: row.message || '',
@@ -38,7 +48,9 @@ export default async function handler(req, res) {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         fleetNo: vehicleId,
         reg: body.reg || vehicleId,
-        operator: body.operator || 'Esk Valley',
+        operator: body.operator || body.company || body.category || 'Unknown',
+        category: body.category || body.company || body.operator || 'Unknown',
+        company: body.company || body.category || body.operator || 'Unknown',
         depot: body.depot || 'Whitby',
         type: body.type || 'MESSAGE',
         message: body.message || '',

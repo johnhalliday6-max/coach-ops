@@ -2300,3 +2300,99 @@ body {
 .fleet-status-pill {
   font-size: 13px;
 }
+
+.office-login-select {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  font-size: 16px;
+  margin-bottom: 12px;
+  background: #ffffff;
+}
+
+.secondary-login-button {
+  margin-top: 10px;
+  background: #e5e7eb !important;
+  color: #0f172a !important;
+}
+
+.management-page > p {
+  color: #526072;
+  margin-bottom: 18px;
+}
+
+.management-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+.management-card,
+.management-row {
+  background: #ffffff;
+  border: 1px solid #dbe5f1;
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.management-card h3 {
+  margin: 0 0 14px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.form-grid input,
+.form-grid select {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 14px;
+}
+
+.management-card button,
+.management-row button {
+  border: 0;
+  background: #1268ff;
+  color: white;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.management-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.management-row {
+  display: grid;
+  grid-template-columns: 220px 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.management-row span {
+  color: #526072;
+}
+
+.management-row button {
+  background: #dc2626;
+}
+
+@media (max-width: 900px) {
+  .management-grid,
+  .form-grid,
+  .management-row {
+    grid-template-columns: 1fr;
+  }
+}

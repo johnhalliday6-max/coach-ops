@@ -188,6 +188,8 @@ export default function DriverView({ selectedFleet }) {
           fleetNo: vehicle.fleetNo,
           reg: vehicle.reg,
           operator: vehicle.operator,
+          category: vehicle.category || vehicle.operator,
+          company: vehicle.category || vehicle.operator,
           depot: vehicle.depot,
           type,
           message: text,

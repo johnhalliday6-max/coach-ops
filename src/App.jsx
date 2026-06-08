@@ -12,8 +12,30 @@ import OfficeRouteTools from "./components/OfficeRouteTools";
 import RouteLibraryPage from "./components/RouteLibraryPage";
 import TrafficLive from "./components/TrafficLive";
 
+const DEFAULT_OFFICE_STAFF = [
+  { staffId: "1600026", name: "John Halliday", companies: ["All"], access: "Admin" },
+  { staffId: "06032013", name: "Anna Bonnard-Halliday", companies: ["Esk Valley Coaches"], access: "Controller" },
+];
+
+const emptyVehicleForm = { fleetNo: "", reg: "", operator: "", category: "", depot: "", type: "Coach", height: "4.20 m", width: "2.55 m", length: "12.80 m", weight: "19,000 kg", status: "Available" };
+const emptyStaffForm = { staffId: "", name: "", companies: "Esk Valley Coaches", access: "Controller" };
+
 function App() {
-  const [selectedFleet, setSelectedFleet] = useState(fleetData[0]);
+  const [managedFleet, setManagedFleet] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("coachOpsManagedFleet") || "null") || fleetData;
+    } catch {
+      return fleetData;
+    }
+  });
+  const [officeStaff, setOfficeStaff] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("coachOpsOfficeStaff") || "null") || DEFAULT_OFFICE_STAFF;
+    } catch {
+      return DEFAULT_OFFICE_STAFF;
+    }
+  });
+  const [selectedFleet, setSelectedFleet] = useState(() => managedFleet[0] || fleetData[0]);
   const [search, setSearch] = useState("");
   const [operatorFilter, setOperatorFilter] = useState("All");
   const isDriverOnly =
@@ -22,11 +44,11 @@ function App() {
   const [activePage, setActivePage] = useState(
     isDriverOnly ? "driver" : "dashboard",
   );
-  const OFFICE_TEST_PROFILES = {
-    "1600026": { name: "John Halliday", allowedCompanies: ["All"] },
-    "06032013": { name: "Anna Bonnard-Halliday", allowedCompanies: ["Esk Valley Coaches"] },
-  };
   const [officeLoginCode, setOfficeLoginCode] = useState("");
+  const [pendingOfficeProfile, setPendingOfficeProfile] = useState(null);
+  const [pendingOfficeCompany, setPendingOfficeCompany] = useState("");
+  const [vehicleForm, setVehicleForm] = useState(emptyVehicleForm);
+  const [staffForm, setStaffForm] = useState(emptyStaffForm);
   const [officeLoginError, setOfficeLoginError] = useState("");
   const [officeProfile, setOfficeProfile] = useState(() => {
     try {
@@ -47,6 +69,16 @@ function App() {
     }
   });
   const officeRouteCacheRef = useRef(officeRouteCache);
+
+  const saveManagedFleet = (nextFleet) => {
+    setManagedFleet(nextFleet);
+    window.localStorage.setItem("coachOpsManagedFleet", JSON.stringify(nextFleet));
+  };
+
+  const saveOfficeStaff = (nextStaff) => {
+    setOfficeStaff(nextStaff);
+    window.localStorage.setItem("coachOpsOfficeStaff", JSON.stringify(nextStaff));
+  };
 
   const saveOfficeRouteCache = (nextCache) => {
     officeRouteCacheRef.current = nextCache;
@@ -101,24 +133,90 @@ function App() {
     return { label: "Available", className: "available", icon: "⚪" };
   };
 
+  const companyForVehicle = (vehicle) => vehicle?.category || vehicle?.operator || "Unassigned";
+
+  const officeCanSeeCompany = (company) => {
+    const allowed = officeProfile?.allowedCompanies || [];
+    return allowed.includes("All") || allowed.includes(company);
+  };
+
+  const saveNewVehicle = () => {
+    const fleetNo = String(vehicleForm.fleetNo || "").trim();
+    const reg = String(vehicleForm.reg || "").trim();
+    if (!fleetNo || !reg) {
+      alert("Fleet number and registration are required");
+      return;
+    }
+    const nextVehicle = {
+      ...emptyVehicleForm,
+      ...vehicleForm,
+      fleetNo,
+      reg,
+      operator: vehicleForm.operator || vehicleForm.category || "Unassigned",
+      category: vehicleForm.category || vehicleForm.operator || "Unassigned",
+      depot: vehicleForm.depot || "Unassigned",
+    };
+    const nextFleet = managedFleet.filter((vehicle) => String(vehicle.fleetNo) !== fleetNo);
+    saveManagedFleet([...nextFleet, nextVehicle]);
+    setSelectedFleet(nextVehicle);
+    setVehicleForm(emptyVehicleForm);
+  };
+
+  const removeVehicle = (fleetNo) => {
+    const nextFleet = managedFleet.filter((vehicle) => String(vehicle.fleetNo) !== String(fleetNo));
+    saveManagedFleet(nextFleet);
+    if (String(selectedFleet?.fleetNo) === String(fleetNo)) setSelectedFleet(nextFleet[0] || fleetData[0]);
+  };
+
+  const saveNewStaff = () => {
+    const staffId = String(staffForm.staffId || "").trim();
+    const name = String(staffForm.name || "").trim();
+    if (!staffId || !name) {
+      alert("Staff ID and name are required");
+      return;
+    }
+    const companies = String(staffForm.companies || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const nextStaffMember = { staffId, name, companies: companies.length ? companies : ["Esk Valley Coaches"], access: staffForm.access || "Controller" };
+    saveOfficeStaff([...officeStaff.filter((staff) => String(staff.staffId) !== staffId), nextStaffMember]);
+    setStaffForm(emptyStaffForm);
+  };
+
+  const removeStaff = (staffId) => {
+    saveOfficeStaff(officeStaff.filter((staff) => String(staff.staffId) !== String(staffId)));
+  };
+
   const loginOffice = () => {
     const code = String(officeLoginCode || "").trim();
-    const profile = OFFICE_TEST_PROFILES[code];
-    if (!profile) {
+    const staff = officeStaff.find((item) => String(item.staffId) === code);
+    if (!staff) {
       setOfficeLoginError("Staff ID not recognised");
       return;
     }
+    const profile = { name: staff.name, staffId: staff.staffId, access: staff.access, allowedCompanies: staff.companies || [] };
     setOfficeLoginError("");
-    setOfficeProfile(profile);
-    const company = profile.allowedCompanies.includes("All") ? "All" : profile.allowedCompanies[0];
+    setPendingOfficeProfile(profile);
+    const firstCompany = profile.allowedCompanies.includes("All") ? "All" : profile.allowedCompanies[0];
+    setPendingOfficeCompany(firstCompany || "All");
+  };
+
+  const enterOfficeControlRoom = () => {
+    if (!pendingOfficeProfile) return;
+    const company = pendingOfficeCompany || (pendingOfficeProfile.allowedCompanies.includes("All") ? "All" : pendingOfficeProfile.allowedCompanies[0]);
+    setOfficeProfile(pendingOfficeProfile);
     setOfficeCompany(company);
     setOperatorFilter(company);
-    window.localStorage.setItem("coachOpsOfficeProfile", JSON.stringify(profile));
+    window.localStorage.setItem("coachOpsOfficeProfile", JSON.stringify(pendingOfficeProfile));
     window.localStorage.setItem("coachOpsOfficeCompany", company);
+    setPendingOfficeProfile(null);
+    setOfficeLoginCode("");
   };
 
   const logoutOffice = () => {
     setOfficeProfile(null);
+    setPendingOfficeProfile(null);
     setOfficeLoginCode("");
     window.localStorage.removeItem("coachOpsOfficeProfile");
     window.localStorage.removeItem("coachOpsOfficeCompany");
@@ -134,7 +232,16 @@ function App() {
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {
-            setOfficeRequests((data.requests || []).slice(0, 6));
+            const visibleRequests = (data.requests || []).filter((request) => {
+              if (!officeProfile) return false;
+              if ((officeProfile.allowedCompanies || []).includes("All")) {
+                return officeCompany === "All" || request.operator === officeCompany || request.company === officeCompany || request.category === officeCompany;
+              }
+              return (officeProfile.allowedCompanies || []).some((company) =>
+                request.operator === company || request.company === company || request.category === company
+              );
+            });
+            setOfficeRequests(visibleRequests.slice(0, 8));
           }
         })
         .catch((err) => console.error("Office requests fetch failed", err));
@@ -147,7 +254,7 @@ function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isDriverOnly]);
+  }, [isDriverOnly, officeProfile, officeCompany]);
 
   useEffect(() => {
     if (isDriverOnly || !officeProfile) return undefined;
@@ -266,16 +373,16 @@ function App() {
     }
   };
 
-  const allOperatorCategories = Array.from(new Set(fleetData.map((vehicle) => vehicle.category || vehicle.operator))).sort();
+  const allOperatorCategories = Array.from(new Set(managedFleet.map((vehicle) => companyForVehicle(vehicle)))).sort();
   const allowedCompanyOptions = officeProfile?.allowedCompanies?.includes("All")
     ? ["All", ...allOperatorCategories]
     : (officeProfile?.allowedCompanies || []);
 
-  const filteredFleet = fleetData.filter((vehicle) => {
+  const filteredFleet = managedFleet.filter((vehicle) => {
     const text =
       `${vehicle.fleetNo} ${vehicle.reg} ${vehicle.operator} ${vehicle.category || ""} ${vehicle.depot}`.toLowerCase();
-    const company = vehicle.category || vehicle.operator;
-    const companyMatch = officeCompany === "All" || company === officeCompany;
+    const company = companyForVehicle(vehicle);
+    const companyMatch = officeCanSeeCompany(company) && (officeCompany === "All" || company === officeCompany);
     return companyMatch && text.includes(search.toLowerCase());
   });
 
@@ -291,21 +398,39 @@ function App() {
   }
 
   if (!officeProfile) {
+    const loginCompanyOptions = pendingOfficeProfile?.allowedCompanies?.includes("All")
+      ? ["All", ...allOperatorCategories]
+      : (pendingOfficeProfile?.allowedCompanies || []);
+
     return (
       <main className="office-login-page">
         <section className="office-login-card">
           <img src={logo} alt="Go Ahead" />
           <h1>Coach Ops Control</h1>
-          <p>Enter your staff ID to open the control room.</p>
-          <input
-            value={officeLoginCode}
-            onChange={(event) => setOfficeLoginCode(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter") loginOffice(); }}
-            placeholder="Staff ID"
-            inputMode="numeric"
-          />
-          {officeLoginError && <div className="office-login-error">{officeLoginError}</div>}
-          <button onClick={loginOffice}>Open Control Room</button>
+          {!pendingOfficeProfile ? (
+            <>
+              <p>Enter your staff ID to open the control room.</p>
+              <input
+                value={officeLoginCode}
+                onChange={(event) => setOfficeLoginCode(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") loginOffice(); }}
+                placeholder="Staff ID"
+                inputMode="numeric"
+                type="password"
+              />
+              {officeLoginError && <div className="office-login-error">{officeLoginError}</div>}
+              <button onClick={loginOffice}>Continue</button>
+            </>
+          ) : (
+            <>
+              <p>Select which company desk you are covering. You will only see that company’s vehicles and driver requests.</p>
+              <select className="office-login-select" value={pendingOfficeCompany} onChange={(event) => setPendingOfficeCompany(event.target.value)}>
+                {loginCompanyOptions.map((company) => <option key={company} value={company}>{company}</option>)}
+              </select>
+              <button onClick={enterOfficeControlRoom}>Open Control Room</button>
+              <button className="secondary-login-button" onClick={() => setPendingOfficeProfile(null)}>Back</button>
+            </>
+          )}
         </section>
       </main>
     );
@@ -356,6 +481,12 @@ function App() {
           onClick={() => setActivePage("drivers")}
         >
           Drivers
+        </div>
+        <div
+          className={activePage === "management" ? "nav active" : "nav"}
+          onClick={() => setActivePage("management")}
+        >
+          Management
         </div>
         <div
           className={activePage === "incidents" ? "nav active" : "nav"}
@@ -533,7 +664,7 @@ function App() {
             <h2>Fleet Database</h2>
 
             <div className="parking-grid">
-              {fleetData.map((vehicle) => (
+              {managedFleet.filter((vehicle) => officeCanSeeCompany(companyForVehicle(vehicle))).map((vehicle) => (
                 <div className="parking-card" key={vehicle.fleetNo}>
                   <h3>{vehicle.fleetNo}</h3>
                   <p>
@@ -651,6 +782,76 @@ function App() {
           <DriverView selectedFleet={selectedFleet} />
         )}
 
+        {activePage === "management" && (
+          <section className="page management-page">
+            <h2>Office Management</h2>
+            <p>Add vehicles and staff access. This is stored in the browser for this prototype; later we will move it into Supabase.</p>
+
+            <div className="management-grid">
+              <div className="management-card">
+                <h3>Add / Update Vehicle</h3>
+                <div className="form-grid">
+                  <input placeholder="Fleet number" value={vehicleForm.fleetNo} onChange={(e) => setVehicleForm({ ...vehicleForm, fleetNo: e.target.value })} />
+                  <input placeholder="Registration" value={vehicleForm.reg} onChange={(e) => setVehicleForm({ ...vehicleForm, reg: e.target.value })} />
+                  <select value={vehicleForm.category} onChange={(e) => setVehicleForm({ ...vehicleForm, category: e.target.value, operator: e.target.value })}>
+                    <option value="">Company</option>
+                    {allOperatorCategories.filter((company) => company !== "All").map((company) => <option key={company} value={company}>{company}</option>)}
+                    <option value="Esk Valley Coaches">Esk Valley Coaches</option>
+                    <option value="Fourway / Go West Yorkshire">Fourway / Go West Yorkshire</option>
+                    <option value="Procters Coaches">Procters Coaches</option>
+                    <option value="Compass Royston">Compass Royston</option>
+                  </select>
+                  <input placeholder="Depot" value={vehicleForm.depot} onChange={(e) => setVehicleForm({ ...vehicleForm, depot: e.target.value })} />
+                  <input placeholder="Type" value={vehicleForm.type} onChange={(e) => setVehicleForm({ ...vehicleForm, type: e.target.value })} />
+                  <input placeholder="Height" value={vehicleForm.height} onChange={(e) => setVehicleForm({ ...vehicleForm, height: e.target.value })} />
+                  <input placeholder="Width" value={vehicleForm.width} onChange={(e) => setVehicleForm({ ...vehicleForm, width: e.target.value })} />
+                  <input placeholder="Length" value={vehicleForm.length} onChange={(e) => setVehicleForm({ ...vehicleForm, length: e.target.value })} />
+                  <input placeholder="Weight" value={vehicleForm.weight} onChange={(e) => setVehicleForm({ ...vehicleForm, weight: e.target.value })} />
+                </div>
+                <button onClick={saveNewVehicle}>Save Vehicle</button>
+              </div>
+
+              <div className="management-card">
+                <h3>Add / Update Staff Access</h3>
+                <div className="form-grid">
+                  <input placeholder="Employee / Staff ID" value={staffForm.staffId} onChange={(e) => setStaffForm({ ...staffForm, staffId: e.target.value })} />
+                  <input placeholder="Name" value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} />
+                  <input placeholder="Companies, comma separated" value={staffForm.companies} onChange={(e) => setStaffForm({ ...staffForm, companies: e.target.value })} />
+                  <select value={staffForm.access} onChange={(e) => setStaffForm({ ...staffForm, access: e.target.value })}>
+                    <option>Controller</option>
+                    <option>Supervisor</option>
+                    <option>Admin</option>
+                    <option>Read Only</option>
+                  </select>
+                </div>
+                <button onClick={saveNewStaff}>Save Staff</button>
+              </div>
+            </div>
+
+            <h3>Vehicles</h3>
+            <div className="management-list">
+              {managedFleet.filter((vehicle) => officeCanSeeCompany(companyForVehicle(vehicle))).map((vehicle) => (
+                <div className="management-row" key={vehicle.fleetNo}>
+                  <strong>{vehicle.fleetNo} · {vehicle.reg}</strong>
+                  <span>{companyForVehicle(vehicle)} · {vehicle.depot}</span>
+                  {officeProfile.access === "Admin" && <button onClick={() => removeVehicle(vehicle.fleetNo)}>Remove</button>}
+                </div>
+              ))}
+            </div>
+
+            <h3>Staff Access</h3>
+            <div className="management-list">
+              {officeStaff.map((staff) => (
+                <div className="management-row" key={staff.staffId}>
+                  <strong>{staff.name}</strong>
+                  <span>{staff.access} · {(staff.companies || []).join(", ")}</span>
+                  {officeProfile.access === "Admin" && <button onClick={() => removeStaff(staff.staffId)}>Remove</button>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {activePage === "routes" && (
           <RouteLibraryPage
             selectedFleet={selectedFleet}
@@ -670,7 +871,8 @@ function App() {
           activePage !== "depots" &&
           activePage !== "parking" &&
           activePage !== "services" &&
-          activePage !== "routes" && (
+          activePage !== "routes" &&
+          activePage !== "management" && (
             <section className="page">
               <h2>{activePage.toUpperCase()}</h2>
               <p>This page is ready to build next.</p>
