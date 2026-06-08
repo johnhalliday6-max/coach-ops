@@ -2396,3 +2396,135 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Coach Ops V3.16 map-first route builder */
+.routes-builder-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(520px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.route-map-builder {
+  background: #eef2f7;
+  color: #07111d;
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.route-map-builder-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.route-map-builder-title h3,
+.route-map-builder-title p {
+  margin: 0 0 6px;
+}
+
+.route-map-builder-title button,
+.route-library-toolbar button {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #1b6bff;
+  color: white;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.route-builder-form-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.route-builder-form-row label,
+.builder-notes {
+  display: block;
+  font-weight: 800;
+}
+
+.route-builder-form-row input,
+.builder-notes textarea {
+  width: 100%;
+  box-sizing: border-box;
+  display: block;
+  margin-top: 6px;
+  border: 1px solid #c5d2df;
+  border-radius: 12px;
+  padding: 11px;
+  font: inherit;
+}
+
+.route-builder-map-wrap {
+  height: 460px;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid #cbd7e5;
+  margin: 14px 0;
+}
+
+.route-builder-stop-panel {
+  background: #dfe9f5;
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.route-builder-stop-panel h4 {
+  margin: 0 0 8px;
+}
+
+.builder-stop-list {
+  margin: 0;
+}
+
+.builder-stop-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.builder-stop-list button {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 9px;
+  margin-left: 5px;
+  background: #10243a;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.builder-notes textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.route-builder-actions {
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+}
+
+.empty-route-message {
+  background: #dfe9f5;
+  border-radius: 14px;
+  padding: 14px;
+  color: #334155;
+}
+
+@media (max-width: 1200px) {
+  .routes-builder-grid,
+  .route-builder-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .route-builder-map-wrap {
+    height: 360px;
+  }
+}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export default function PlaceSearchBox({ label, value, setValue, placeholder, compact = false }) {
+export default function PlaceSearchBox({ label, value, setValue, placeholder, compact = false, onPick }) {
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -55,6 +55,7 @@ export default function PlaceSearchBox({ label, value, setValue, placeholder, co
               key={`${item.label}-${item.lat}-${item.lng}`}
               onClick={() => {
                 setValue(item.label);
+                onPick?.(item);
                 setOpen(false);
               }}
             >

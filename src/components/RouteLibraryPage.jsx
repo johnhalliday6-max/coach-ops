@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { deleteCustomRoute, loadRouteLibrary, resetStarterRoutes, saveCustomRoute } from '../data/routeLibrary';
-import { buildVehicleRoute, clearVehicleRoute, pushRouteToDriver, saveActiveRoute } from '../shared/routePlanning';
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { deleteCustomRoute, loadRouteLibrary, saveCustomRoute } from '../data/routeLibrary';
+import { buildVehicleRoute, pushRouteToDriver, saveActiveRoute } from '../shared/routePlanning';
 import PlaceSearchBox from './PlaceSearchBox';
+
+const builderStopIcon = L.divIcon({
+  className: 'map-emoji-marker planned-stop-marker',
+  html: '📍',
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+});
 
 function makeId(value) {
   return String(value || 'route')
@@ -16,26 +26,66 @@ function blankForm(selectedFleet) {
     number: '',
     name: '',
     operator: selectedFleet?.operator || 'Go-Ahead Coach Ops',
-    category: 'School',
-    stopsText: '',
-    destination: '',
+    category: 'Route',
+    searchText: '',
     notes: '',
+    points: [],
+  };
+}
+
+function MapClickAdder({ onAdd }) {
+  useMapEvents({
+    click(event) {
+      onAdd?.({
+        label: `Map point ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`,
+        lat: event.latlng.lat,
+        lng: event.latlng.lng,
+      });
+    },
+  });
+  return null;
+}
+
+function normalisePoint(item, index) {
+  if (typeof item === 'string') return { label: item, lat: null, lng: null, id: `${item}-${index}` };
+  return {
+    id: item.id || `${item.label || 'point'}-${index}`,
+    label: item.label || item.name || `Stop ${index + 1}`,
+    lat: Number.isFinite(Number(item.lat)) ? Number(item.lat) : null,
+    lng: Number.isFinite(Number(item.lng)) ? Number(item.lng) : null,
   };
 }
 
 export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelectDashboard }) {
   const [routes, setRoutes] = useState(loadRouteLibrary);
   const [selectedRouteId, setSelectedRouteId] = useState(routes[0]?.id || '');
-  const [status, setStatus] = useState('Create a route, assign it to a coach, then plot or push it.');
+  const [status, setStatus] = useState('Start from scratch: search or click the map to add stops, then save the route.');
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(true);
   const [form, setForm] = useState(blankForm(selectedFleet));
 
   const selectedRoute = useMemo(
-    () => routes.find((route) => route.id === selectedRouteId) || routes[0] || null,
+    () => routes.find((route) => route.id === selectedRouteId) || null,
     [routes, selectedRouteId],
   );
+
+  const builderPoints = useMemo(() => (form.points || []).map(normalisePoint), [form.points]);
+  const builderPositions = builderPoints
+    .filter((point) => point.lat != null && point.lng != null)
+    .map((point) => [point.lat, point.lng]);
+
+  const selectedPoints = useMemo(() => {
+    if (!selectedRoute) return [];
+    const source = selectedRoute.plotPoints?.length
+      ? selectedRoute.plotPoints
+      : [...(selectedRoute.stops || []), selectedRoute.destination].filter(Boolean);
+    return source.map(normalisePoint);
+  }, [selectedRoute]);
+
+  const selectedPositions = selectedPoints
+    .filter((point) => point.lat != null && point.lng != null)
+    .map((point) => [point.lat, point.lng]);
 
   const filteredRoutes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -55,12 +105,16 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
 
   const startNewRoute = () => {
     setEditing(true);
+    setSelectedRouteId('');
     setForm(blankForm(selectedFleet));
-    setStatus('Creating a new route. Add route number, stops and destination.');
+    setStatus('New blank route. Add stops from the map/search, then save it.');
   };
 
   const editSelectedRoute = () => {
     if (!selectedRoute) return;
+    const points = selectedRoute.plotPoints?.length
+      ? selectedRoute.plotPoints
+      : [...(selectedRoute.stops || []), selectedRoute.destination].filter(Boolean).map((label) => ({ label }));
     setEditing(true);
     setForm({
       id: selectedRoute.id,
@@ -68,30 +122,67 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
       name: selectedRoute.name || '',
       operator: selectedRoute.operator || selectedFleet.operator || 'Go-Ahead Coach Ops',
       category: selectedRoute.category || 'Route',
-      stopsText: (selectedRoute.stops || []).join('\n'),
-      destination: selectedRoute.destination || '',
+      searchText: '',
       notes: selectedRoute.notes || '',
+      points,
     });
-    setStatus(`Editing ${selectedRoute.number} - ${selectedRoute.name}.`);
+    setStatus(`Editing ${selectedRoute.number || ''} ${selectedRoute.name || ''}.`);
+  };
+
+  const addPoint = (point) => {
+    if (!point?.label) return;
+    setForm((current) => ({
+      ...current,
+      searchText: '',
+      points: [
+        ...(current.points || []),
+        {
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          label: point.label,
+          lat: point.lat ?? null,
+          lng: point.lng ?? null,
+        },
+      ],
+    }));
+    setStatus(`Added stop: ${point.label}`);
+  };
+
+  const removePoint = (index) => {
+    setForm((current) => ({ ...current, points: current.points.filter((_, i) => i !== index) }));
+  };
+
+  const movePoint = (index, direction) => {
+    setForm((current) => {
+      const next = [...current.points];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return current;
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...current, points: next };
+    });
   };
 
   const saveRoute = () => {
-    if (!form.number.trim() || !form.name.trim() || !form.destination.trim()) {
-      setStatus('Route number, name and destination are required.');
+    const points = (form.points || []).map(normalisePoint).filter((point) => point.label.trim());
+    if (!form.number.trim() || !form.name.trim()) {
+      setStatus('Route number and route name are required.');
+      return;
+    }
+    if (points.length < 2) {
+      setStatus('Add at least two points: a start/pickup and a destination.');
       return;
     }
 
+    const destination = points[points.length - 1].label;
+    const stops = points.slice(0, -1).map((point) => point.label);
     const route = {
       id: form.id || makeId(`${form.number}-${form.name}`),
       number: form.number.trim(),
       name: form.name.trim(),
       operator: form.operator.trim() || selectedFleet.operator,
       category: form.category.trim() || 'Route',
-      stops: form.stopsText
-        .split('\n')
-        .map((stop) => stop.trim())
-        .filter(Boolean),
-      destination: form.destination.trim(),
+      stops,
+      destination,
+      plotPoints: points,
       notes: form.notes.trim(),
     };
 
@@ -100,23 +191,18 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     setSelectedRouteId(route.id);
     setStatus(`Saved route ${route.number} - ${route.name}.`);
     setEditing(false);
-    setForm(blankForm(selectedFleet));
   };
 
   const deleteRoute = () => {
     if (!selectedRoute) return;
-    const ok = window.confirm(`Delete/ hide route ${selectedRoute.number} - ${selectedRoute.name}?`);
+    const ok = window.confirm(`Delete route ${selectedRoute.number} - ${selectedRoute.name}?`);
     if (!ok) return;
     deleteCustomRoute(selectedRoute.id);
     refreshRoutes();
     setSelectedRouteId('');
+    setEditing(true);
+    setForm(blankForm(selectedFleet));
     setStatus('Route removed from the library.');
-  };
-
-  const resetStarters = () => {
-    resetStarterRoutes();
-    refreshRoutes();
-    setStatus('Starter routes restored.');
   };
 
   const plotRoute = async ({ push = false } = {}) => {
@@ -128,7 +214,6 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     setBusy(true);
     setStatus(`${push ? 'Pushing' : 'Plotting'} ${selectedRoute.number} for ${selectedFleet.fleetNo}...`);
     try {
-      await clearVehicleRoute(selectedFleet);
       const built = await buildVehicleRoute(selectedFleet, selectedRoute);
       await saveActiveRoute(built);
       onRouteBuilt?.(built);
@@ -143,28 +228,32 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     }
   };
 
+  const mapPoints = editing ? builderPoints : selectedPoints;
+  const mapPositions = editing ? builderPositions : selectedPositions;
+
   return (
     <section className="page routes-library-page">
       <div className="routes-library-header">
         <div>
-          <h2>Routes Library</h2>
-          <p>Build permanent school runs, rail work, shuttles and airport jobs. Select a route, assign it to a coach, then plot or push it.</p>
+          <h2>Route Builder</h2>
+          <p>No starter/demo routes. Build each company route from scratch on the map, save it, then plot or push it to a coach.</p>
         </div>
         <strong>Selected coach: {selectedFleet.fleetNo} / {selectedFleet.reg}</strong>
       </div>
 
-      <div className="routes-library-grid">
+      <div className="routes-builder-grid">
         <div className="route-library-list card">
           <div className="route-library-toolbar">
             <h3>Saved Routes</h3>
-            <button type="button" onClick={startNewRoute}>+ Create</button>
+            <button type="button" onClick={startNewRoute}>+ New blank route</button>
           </div>
           <input
             className="route-library-search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search 315, school, rail, airport..."
+            placeholder="Search saved routes..."
           />
+          {filteredRoutes.length === 0 && <p className="empty-route-message">No saved routes yet. Create the first one from the map.</p>}
           {filteredRoutes.map((route) => (
             <button
               key={route.id}
@@ -177,55 +266,96 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
             >
               <strong>{route.number}</strong>
               <span>{route.name}</span>
-              <small>{route.category} · {route.operator}{route.starter ? ' · starter' : ''}</small>
+              <small>{route.category} · {route.operator}</small>
             </button>
           ))}
-          <button className="soft-button" type="button" onClick={resetStarters}>Restore starter routes</button>
         </div>
 
-        <div className="route-library-detail card">
-          <h3>Route Detail</h3>
-          {selectedRoute ? (
-            <>
-              <div className="route-number-badge">{selectedRoute.number}</div>
-              <h2>{selectedRoute.name}</h2>
-              <p><strong>Operator:</strong> {selectedRoute.operator}</p>
-              <p><strong>Type:</strong> {selectedRoute.category}</p>
-              {selectedRoute.notes && <p>{selectedRoute.notes}</p>}
-              <h4>Stops / pickups</h4>
-              <ol className="route-stop-list">
-                {(selectedRoute.stops || []).map((stop, index) => <li key={`${stop}-${index}`}>{stop}</li>)}
-                <li><strong>{selectedRoute.destination}</strong></li>
-              </ol>
-              <div className="route-library-actions">
-                <button disabled={busy} onClick={() => plotRoute({ push: false })}>🗺 Plot on Office Map</button>
-                <button disabled={busy} onClick={() => plotRoute({ push: true })}>📲 Push to Driver</button>
-                <button disabled={busy} onClick={editSelectedRoute}>Edit</button>
-                <button disabled={busy} className="danger-soft" onClick={deleteRoute}>Delete</button>
-              </div>
-            </>
-          ) : <p>No route selected.</p>}
-          <p className="route-status">{status}</p>
-        </div>
+        <div className="route-map-builder card">
+          <div className="route-map-builder-title">
+            <div>
+              <h3>{editing ? 'Create Route on Map' : 'Saved Route Map'}</h3>
+              <p>{editing ? 'Search places or click the map. Last point becomes the destination.' : 'Select edit to change stops or order.'}</p>
+            </div>
+            {!editing && selectedRoute && <button type="button" onClick={editSelectedRoute}>Edit this route</button>}
+          </div>
 
-        <div className="route-library-create card">
-          <h3>{editing ? 'Create / Edit Route' : 'Create Route'}</h3>
-          {!editing && <p>Select + Create or Edit to open the form.</p>}
           {editing && (
-            <>
+            <div className="route-builder-form-row">
               <label>Route number<input value={form.number} onChange={(e) => setForm((c) => ({ ...c, number: e.target.value }))} placeholder="315" /></label>
-              <label>Name<input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} placeholder="Whitby School Run" /></label>
-              <label>Operator<input value={form.operator} onChange={(e) => setForm((c) => ({ ...c, operator: e.target.value }))} /></label>
+              <label>Route name<input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} placeholder="Whitby School Run" /></label>
+              <label>Company<input value={form.operator} onChange={(e) => setForm((c) => ({ ...c, operator: e.target.value }))} /></label>
               <label>Type<input value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} placeholder="School / Rail / Event" /></label>
-              <label>Stops / pickups<textarea value={form.stopsText} onChange={(e) => setForm((c) => ({ ...c, stopsText: e.target.value }))} placeholder={'One stop per line\nSleights\nRuswarp\nWhitby'} /></label>
-              <PlaceSearchBox compact label="Destination" value={form.destination} setValue={(value) => setForm((c) => ({ ...c, destination: value }))} placeholder="Caedmon College Whitby" />
-              <label>Notes<textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Contract notes, access instructions, pickup notes..." /></label>
-              <div className="route-library-actions">
+            </div>
+          )}
+
+          {editing && (
+            <PlaceSearchBox
+              compact
+              label="Add stop / pickup / destination"
+              value={form.searchText}
+              setValue={(value) => setForm((c) => ({ ...c, searchText: value }))}
+              onPick={addPoint}
+              placeholder="Search school, station, hotel, services, postcode..."
+            />
+          )}
+
+          <div className="route-builder-map-wrap">
+            <MapContainer center={[54.28, -1.25]} zoom={7} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {editing && <MapClickAdder onAdd={addPoint} />}
+              {mapPositions.length > 1 && <Polyline positions={mapPositions} weight={5} />}
+              {mapPoints.map((point, index) => (
+                point.lat != null && point.lng != null ? (
+                  <Marker key={point.id || `${point.label}-${index}`} position={[point.lat, point.lng]} icon={builderStopIcon}>
+                    <Popup>{index + 1}. {point.label}</Popup>
+                  </Marker>
+                ) : null
+              ))}
+            </MapContainer>
+          </div>
+
+          <div className="route-builder-stop-panel">
+            <h4>{editing ? 'Plotted Stops' : selectedRoute ? `${selectedRoute.number} - ${selectedRoute.name}` : 'No route selected'}</h4>
+            {mapPoints.length === 0 && <p>No points yet. Search for a place or click the map.</p>}
+            <ol className="route-stop-list builder-stop-list">
+              {mapPoints.map((point, index) => (
+                <li key={point.id || `${point.label}-${index}`}>
+                  <span>{point.label}{index === mapPoints.length - 1 && mapPoints.length > 1 ? '  · destination' : ''}</span>
+                  {editing && (
+                    <div>
+                      <button type="button" onClick={() => movePoint(index, -1)}>↑</button>
+                      <button type="button" onClick={() => movePoint(index, 1)}>↓</button>
+                      <button type="button" onClick={() => removePoint(index)}>Remove</button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {editing && (
+            <label className="builder-notes">Notes<textarea value={form.notes} onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Contract notes, access instructions, pickup notes..." /></label>
+          )}
+
+          <div className="route-library-actions route-builder-actions">
+            {editing ? (
+              <>
                 <button disabled={busy} onClick={saveRoute}>Save Route</button>
                 <button type="button" onClick={() => { setEditing(false); setForm(blankForm(selectedFleet)); }}>Cancel</button>
-              </div>
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                <button disabled={busy || !selectedRoute} onClick={() => plotRoute({ push: false })}>🗺 Plot on Office Map</button>
+                <button disabled={busy || !selectedRoute} onClick={() => plotRoute({ push: true })}>📲 Push to Driver</button>
+                <button disabled={busy || !selectedRoute} className="danger-soft" onClick={deleteRoute}>Delete</button>
+              </>
+            )}
+          </div>
+          <p className="route-status">{status}</p>
         </div>
       </div>
     </section>
