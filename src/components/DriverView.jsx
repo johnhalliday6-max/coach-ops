@@ -138,6 +138,18 @@ function formatDistance(step) {
   return `${step.distanceMiles || "--"} mi`;
 }
 
+function routeDisplayName(route) {
+  if (!route) return 'route';
+  const number = String(route.routeNumber || route.number || '').trim();
+  const name = String(route.routeName || route.name || '').trim();
+  if (number || name) return `${number}${number && name ? ' - ' : ''}${name}`.trim();
+  return route.destination || route.routeEndLabel || 'route';
+}
+
+function hasRouteGeometry(route) {
+  return Array.isArray(route?.geometry) && route.geometry.length > 1;
+}
+
 export default function DriverView({ selectedFleet }) {
   // Never default every driver session to the CGG test coach.
   // The selected/phone vehicle must be the source of truth so 200+ coaches
@@ -478,12 +490,12 @@ export default function DriverView({ selectedFleet }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(routeForVehicle),
     });
-    setDestination(routeForVehicle.destination || destination);
+    setDestination(routeForVehicle.routeEndLabel || routeForVehicle.destination || destination);
     setStops(Array.isArray(routeForVehicle.stops) ? routeForVehicle.stops : []);
     setRouteSummary(routeForVehicle);
-    setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
+    setRouteStatus(`Route ready: ${routeDisplayName(routeForVehicle)} · ${route.distanceMiles || '--'} miles · approx ${route.durationMinutes || '--'} mins`);
     setLastAction(sourceText);
-    setNavMode(true);
+    setNavMode(hasRouteGeometry(routeForVehicle));
     requestWakeLock();
   };
 
@@ -495,7 +507,7 @@ export default function DriverView({ selectedFleet }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: pendingRoutePush.id, accepted: true }),
     });
-    await postOfficeRequest("ROUTE_ACCEPTED", `Driver accepted office route to ${pendingRoutePush.route.destination}`);
+    await postOfficeRequest("ROUTE_ACCEPTED", `Driver accepted office route: ${routeDisplayName(pendingRoutePush.route)}`);
     setPendingRoutePush(null);
   };
 
@@ -590,10 +602,10 @@ export default function DriverView({ selectedFleet }) {
 
           if (routeChanged) {
             setRouteSummary(incomingRoute);
-            setDestination(incomingRoute.destination || '');
+            setDestination(incomingRoute.routeEndLabel || incomingRoute.destination || '');
             setStops(Array.isArray(incomingRoute.stops) ? incomingRoute.stops : []);
             setActiveStepIndex(0);
-            setRouteStatus(`Assigned route loaded: ${incomingRoute.destination || 'route'}`);
+            setRouteStatus(`Assigned route loaded: ${routeDisplayName(incomingRoute)}`);
             setLastAction(`Route updated for ${vehicle.fleetNo}`);
           }
         })
@@ -768,6 +780,43 @@ export default function DriverView({ selectedFleet }) {
 
   const latestOfficeMessages = officeRequests.filter((item) => item.source === "office");
 
+  const startOrResumeRoute = () => {
+    if (hasRouteGeometry(routeSummary)) {
+      setRouteStatus(`Navigation ready: ${routeDisplayName(routeSummary)}`);
+      setNavMode(true);
+      requestWakeLock();
+      return;
+    }
+    planRoute();
+  };
+
+  const routePlannerPanel = (
+    <section className="driver-route-planner-card route-card-large">
+      <div>
+        <h2>{routeSummary ? 'Set a different route' : 'Set Route'}</h2>
+        <p>Search supports streets, stations, airports, venues and services.</p>
+      </div>
+
+      <div className="driver-route-inputs route-inputs-wide">
+        <PlaceSearchBox label="Destination" value={destination} setValue={setDestination} placeholder="Scarborough Station, Big Ben, Manchester Airport T2..." />
+        <PlaceSearchBox label="Add stop / services" value={stopInput} setValue={setStopInput} placeholder="Birch Services, Wetherby, Esk Valley Coaches..." />
+      </div>
+
+      <button type="button" onClick={addStop}>+ Add Stop</button>
+
+      {stops.length > 0 && (
+        <div className="route-stop-pills">
+          {stops.map((stop, index) => (
+            <span key={`${stop}-${index}`}>{stop}<button onClick={() => setStops((current) => current.filter((_, i) => i !== index))}>×</button></span>
+          ))}
+        </div>
+      )}
+
+      <button type="button" onClick={startOrResumeRoute}>🗺 {routeSummary ? 'Start Navigation' : 'Set Route + Enter Nav Mode'}</button>
+      <p className="route-status">{routeStatus}</p>
+    </section>
+  );
+
   return (
     <main className="driver-only-page">
       <header className="driver-only-header">
@@ -829,38 +878,20 @@ export default function DriverView({ selectedFleet }) {
         <section className="driver-assigned-route-card">
           <div>
             <strong>Assigned Route</strong>
-            <h2>{routeSummary.routeNumber ? `${routeSummary.routeNumber} · ` : ''}{routeSummary.routeName || routeSummary.destination}</h2>
-            <p>{routeSummary.stops?.length ? `${routeSummary.stops.join(' → ')} → ` : ''}{routeSummary.destination}</p>
+            <h2>{routeDisplayName(routeSummary)}</h2>
+            <p>{routeSummary.stops?.length ? `${routeSummary.stops.join(' → ')} → ` : ''}{routeSummary.routeEndLabel || routeSummary.destination}</p>
             <small>{routeSummary.distanceMiles || '--'} miles · approx {routeSummary.durationMinutes || '--'} mins · {routeSummary.engine || 'route'}</small>
           </div>
           <button type="button" onClick={() => { setNavMode(true); requestWakeLock(); }}>Navigate</button>
         </section>
       )}
 
-      <section className="driver-route-planner-card route-card-large">
-        <div>
-          <h2>Set Route</h2>
-          <p>Search supports streets, stations, airports, venues and services.</p>
-        </div>
-
-        <div className="driver-route-inputs route-inputs-wide">
-          <PlaceSearchBox label="Destination" value={destination} setValue={setDestination} placeholder="Scarborough Station, Big Ben, Manchester Airport T2..." />
-          <PlaceSearchBox label="Add stop / services" value={stopInput} setValue={setStopInput} placeholder="Birch Services, Wetherby, Esk Valley Coaches..." />
-        </div>
-
-        <button type="button" onClick={addStop}>+ Add Stop</button>
-
-        {stops.length > 0 && (
-          <div className="route-stop-pills">
-            {stops.map((stop, index) => (
-              <span key={`${stop}-${index}`}>{stop}<button onClick={() => setStops((current) => current.filter((_, i) => i !== index))}>×</button></span>
-            ))}
-          </div>
-        )}
-
-        <button type="button" onClick={planRoute}>🗺 Set Route + Enter Nav Mode</button>
-        <p className="route-status">{routeStatus}</p>
-      </section>
+      {routeSummary ? (
+        <details className="driver-manual-route-details">
+          <summary>Need to set a different route?</summary>
+          {routePlannerPanel}
+        </details>
+      ) : routePlannerPanel}
 
       {latestOfficeMessages.length > 0 && (
         <section className="driver-card office-message-card">
@@ -899,7 +930,7 @@ export default function DriverView({ selectedFleet }) {
         <section className="driver-only-map">
           <div className="driver-map-title">
             <h2>Live Route Map</h2>
-            <span>Waiting for route setup</span>
+            <span>{routeSummary ? routeDisplayName(routeSummary) : 'Waiting for route setup'}</span>
           </div>
           <RouteMap
             height="calc(100vh - 285px)"

@@ -6,6 +6,13 @@ const DEPOT_STARTS = {
   Cleckheaton: { lat: 53.724, lng: -1.713 },
 };
 
+function displayRouteDestination(routeInput, fallback) {
+  const number = String(routeInput.number || routeInput.routeNumber || '').trim();
+  const name = String(routeInput.name || routeInput.routeName || '').trim();
+  if (number || name) return `${number}${number && name ? ' - ' : ''}${name}`.trim();
+  return fallback;
+}
+
 export async function getVehicleStart(vehicle) {
   try {
     const trackingResponse = await fetch(`/api/tracking?vehicle=${encodeURIComponent(vehicle.fleetNo)}`);
@@ -42,10 +49,11 @@ export async function buildVehicleRoute(vehicle, routeInput) {
         .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
     : [];
 
-  const destination = String(
+  const rawDestination = String(
     routeInput.destination || directPoints[directPoints.length - 1]?.label || ''
   ).trim();
-  if (!destination) throw new Error('Destination required');
+  if (!rawDestination) throw new Error('Destination required');
+  const displayDestination = displayRouteDestination(routeInput, rawDestination);
 
   const stops = directPoints.length >= 2
     ? directPoints.slice(1, -1).map((point) => point.label)
@@ -63,7 +71,7 @@ export async function buildVehicleRoute(vehicle, routeInput) {
     body: JSON.stringify({
       startLat: start.lat,
       startLng: start.lng,
-      destination,
+      destination: rawDestination,
       stops,
       points: directPoints.length >= 2 ? directPoints : undefined,
       height: vehicle.height,
@@ -80,7 +88,8 @@ export async function buildVehicleRoute(vehicle, routeInput) {
     ...data.route,
     fleetNo: vehicle.fleetNo,
     reg: vehicle.reg,
-    destination,
+    destination: displayDestination,
+    routeEndLabel: rawDestination,
     stops,
     waypoint: stops.join(' → '),
     startLabel: start.label,
@@ -125,7 +134,7 @@ export async function pushRouteToDriver(vehicle, route) {
       depot: vehicle.depot,
       type: 'ROUTE_PUSH',
       source: 'office',
-      message: `New route available: ${route.routeNumber ? `${route.routeNumber} - ` : ''}${route.stops?.length ? `${route.stops.join(' → ')} → ` : ''}${route.destination}`,
+      message: `New route available: ${route.destination}${route.distanceMiles ? ` · ${route.distanceMiles} miles` : ''}`,
     }),
   });
 }

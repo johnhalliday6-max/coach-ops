@@ -24,8 +24,8 @@ export default function DriverIntel() {
       .then((res) => res.json())
       .then((data) => {
         if (data?.ok && Array.isArray(data.alerts)) {
-          setAlerts(data.alerts.slice(0, 6));
-          setStatus(`Live National Highways · ${data.count} current records`);
+          setAlerts(data.alerts.slice(0, 3));
+          setStatus(`Top 3 National Highways records · ${data.count} live`);
           return;
         }
 
@@ -38,11 +38,11 @@ export default function DriverIntel() {
   }, []);
 
   return (
-    <section className="driver-intel-card">
-      <div className="driver-section-title">
+    <details className="driver-intel-card driver-intel-collapsed" open={false}>
+      <summary className="driver-section-title">
         <h3>Live Road Intel</h3>
         <span>{status}</span>
-      </div>
+      </summary>
 
       <div className="driver-intel-list">
         {alerts.map((alert) => (
@@ -53,6 +53,6 @@ export default function DriverIntel() {
           </article>
         ))}
       </div>
-    </section>
+    </details>
   );
 }

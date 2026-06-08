@@ -50,9 +50,10 @@ export default async function handler(req, res) {
       if (!vehicleId) return res.status(400).json({ ok: false, error: 'Missing vehicle id' })
 
       const route = {
+        ...body,
         fleetNo: vehicleId,
         reg: body.reg || vehicleId,
-        destination: body.destination || 'Destination',
+        destination: body.destination || body.routeName || body.name || 'Destination',
         waypoint: body.waypoint || '',
         startLabel: body.startLabel || 'Current Location',
         start: body.start || null,
@@ -60,6 +61,7 @@ export default async function handler(req, res) {
         waypointPoint: body.waypointPoint || null,
         waypoints: Array.isArray(body.waypoints) ? body.waypoints : [],
         stops: Array.isArray(body.stops) ? body.stops : [],
+        plotPoints: Array.isArray(body.plotPoints) ? body.plotPoints : [],
         instructions: Array.isArray(body.instructions) ? body.instructions : [],
         geometry: Array.isArray(body.geometry) ? body.geometry : [],
         distanceMiles: body.distanceMiles || null,

@@ -2551,3 +2551,108 @@ body {
   font-weight: 700;
   background: white;
 }
+
+
+/* V3.18 driver cleanup */
+.driver-manual-route-details {
+  background: #0c1a2d;
+  border: 1px solid #21344f;
+  border-radius: 18px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.driver-manual-route-details > summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  font-weight: 900;
+  color: #ffffff;
+}
+
+.driver-manual-route-details .driver-route-planner-card {
+  margin: 0;
+  border-radius: 0;
+  border-left-width: 6px;
+}
+
+.driver-assigned-route-card {
+  background: #eaf2ff;
+  color: #0b1220;
+  border-left: 8px solid #20d86b;
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.driver-assigned-route-card h2,
+.driver-assigned-route-card p {
+  margin: 4px 0;
+}
+
+.driver-assigned-route-card button {
+  border: 0;
+  border-radius: 12px;
+  padding: 14px 18px;
+  background: #1268ff;
+  color: white;
+  font-weight: 900;
+}
+
+.driver-intel-card.driver-intel-collapsed {
+  display: block;
+}
+
+.driver-intel-card summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.driver-intel-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.driver-intel-card summary h3::after {
+  content: ' tap to view';
+  font-size: 13px;
+  color: #9fb3c8;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .driver-assigned-route-card {
+    display: grid;
+  }
+
+  .driver-only-grid {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .driver-only-map {
+    order: -1;
+  }
+
+  .driver-only-left {
+    order: 1;
+  }
+
+  .driver-only-right {
+    order: 2;
+  }
+
+  .office-message-card {
+    max-height: 260px;
+    overflow: auto;
+  }
+
+  .route-stop-pills span {
+    width: 100%;
+    justify-content: space-between;
+    border-radius: 18px;
+    word-break: break-word;
+  }
+}
