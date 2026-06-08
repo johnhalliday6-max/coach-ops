@@ -12,10 +12,30 @@ import OfficeRouteTools from "./components/OfficeRouteTools";
 import RouteLibraryPage from "./components/RouteLibraryPage";
 import TrafficLive from "./components/TrafficLive";
 
+const PROTECTED_DEVELOPER_STAFF_ID = "1600026";
+
 const DEFAULT_OFFICE_STAFF = [
-  { staffId: "1600026", name: "John Halliday", companies: ["All"], access: "Admin" },
+  { staffId: PROTECTED_DEVELOPER_STAFF_ID, name: "John Halliday", companies: ["All"], access: "Developer", protected: true },
   { staffId: "06032013", name: "Anna Bonnard-Halliday", companies: ["Esk Valley Coaches"], access: "Controller" },
 ];
+
+function normaliseOfficeStaff(staffList) {
+  const list = Array.isArray(staffList) ? staffList : DEFAULT_OFFICE_STAFF;
+  const withoutDuplicateDeveloper = list.filter((staff) => String(staff.staffId) !== PROTECTED_DEVELOPER_STAFF_ID);
+  return [DEFAULT_OFFICE_STAFF[0], ...withoutDuplicateDeveloper];
+}
+
+function isDeveloper(profile) {
+  return String(profile?.staffId) === PROTECTED_DEVELOPER_STAFF_ID || profile?.access === "Developer";
+}
+
+function canManage(profile) {
+  return isDeveloper(profile) || profile?.access === "Admin" || profile?.access === "Supervisor";
+}
+
+function canRemove(profile) {
+  return isDeveloper(profile) || profile?.access === "Admin";
+}
 
 const emptyVehicleForm = { fleetNo: "", reg: "", operator: "", category: "", depot: "", type: "Coach", height: "4.20 m", width: "2.55 m", length: "12.80 m", weight: "19,000 kg", status: "Available" };
 const emptyStaffForm = { staffId: "", name: "", companies: "Esk Valley Coaches", access: "Controller" };
@@ -30,9 +50,9 @@ function App() {
   });
   const [officeStaff, setOfficeStaff] = useState(() => {
     try {
-      return JSON.parse(window.localStorage.getItem("coachOpsOfficeStaff") || "null") || DEFAULT_OFFICE_STAFF;
+      return normaliseOfficeStaff(JSON.parse(window.localStorage.getItem("coachOpsOfficeStaff") || "null") || DEFAULT_OFFICE_STAFF);
     } catch {
-      return DEFAULT_OFFICE_STAFF;
+      return normaliseOfficeStaff(DEFAULT_OFFICE_STAFF);
     }
   });
   const [selectedFleet, setSelectedFleet] = useState(() => managedFleet[0] || fleetData[0]);
@@ -76,8 +96,9 @@ function App() {
   };
 
   const saveOfficeStaff = (nextStaff) => {
-    setOfficeStaff(nextStaff);
-    window.localStorage.setItem("coachOpsOfficeStaff", JSON.stringify(nextStaff));
+    const normalised = normaliseOfficeStaff(nextStaff);
+    setOfficeStaff(normalised);
+    window.localStorage.setItem("coachOpsOfficeStaff", JSON.stringify(normalised));
   };
 
   const saveOfficeRouteCache = (nextCache) => {
@@ -179,12 +200,16 @@ function App() {
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
-    const nextStaffMember = { staffId, name, companies: companies.length ? companies : ["Esk Valley Coaches"], access: staffForm.access || "Controller" };
+    const nextStaffMember = { staffId, name, companies: companies.length ? companies : ["Esk Valley Coaches"], access: staffForm.access || "Controller", protected: staffId === PROTECTED_DEVELOPER_STAFF_ID };
     saveOfficeStaff([...officeStaff.filter((staff) => String(staff.staffId) !== staffId), nextStaffMember]);
     setStaffForm(emptyStaffForm);
   };
 
   const removeStaff = (staffId) => {
+    if (String(staffId) === PROTECTED_DEVELOPER_STAFF_ID) {
+      alert("Developer account cannot be removed");
+      return;
+    }
     saveOfficeStaff(officeStaff.filter((staff) => String(staff.staffId) !== String(staffId)));
   };
 
@@ -195,7 +220,7 @@ function App() {
       setOfficeLoginError("Staff ID not recognised");
       return;
     }
-    const profile = { name: staff.name, staffId: staff.staffId, access: staff.access, allowedCompanies: staff.companies || [] };
+    const profile = { name: staff.name, staffId: staff.staffId, access: staff.staffId === PROTECTED_DEVELOPER_STAFF_ID ? "Developer" : staff.access, allowedCompanies: staff.companies || [] };
     setOfficeLoginError("");
     setPendingOfficeProfile(profile);
     const firstCompany = profile.allowedCompanies.includes("All") ? "All" : profile.allowedCompanies[0];
@@ -821,6 +846,7 @@ function App() {
                     <option>Controller</option>
                     <option>Supervisor</option>
                     <option>Admin</option>
+                    <option>Developer</option>
                     <option>Read Only</option>
                   </select>
                 </div>
@@ -834,7 +860,7 @@ function App() {
                 <div className="management-row" key={vehicle.fleetNo}>
                   <strong>{vehicle.fleetNo} · {vehicle.reg}</strong>
                   <span>{companyForVehicle(vehicle)} · {vehicle.depot}</span>
-                  {officeProfile.access === "Admin" && <button onClick={() => removeVehicle(vehicle.fleetNo)}>Remove</button>}
+                  {canRemove(officeProfile) && <button onClick={() => removeVehicle(vehicle.fleetNo)}>Remove</button>}
                 </div>
               ))}
             </div>
@@ -844,8 +870,8 @@ function App() {
               {officeStaff.map((staff) => (
                 <div className="management-row" key={staff.staffId}>
                   <strong>{staff.name}</strong>
-                  <span>{staff.access} · {(staff.companies || []).join(", ")}</span>
-                  {officeProfile.access === "Admin" && <button onClick={() => removeStaff(staff.staffId)}>Remove</button>}
+                  <span>{staff.access}{staff.protected ? " · Protected" : ""} · {(staff.companies || []).join(", ")}</span>
+                  {canRemove(officeProfile) && String(staff.staffId) !== PROTECTED_DEVELOPER_STAFF_ID && <button onClick={() => removeStaff(staff.staffId)}>Remove</button>}
                 </div>
               ))}
             </div>

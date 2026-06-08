@@ -17,6 +17,14 @@ const DRIVER_TEST_PROFILES = {
   },
 };
 
+function getManagedFleet() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem("coachOpsManagedFleet") || "null");
+    return Array.isArray(stored) && stored.length ? stored : fleetData;
+  } catch {
+    return fleetData;
+  }
+}
 
 function metresBetween(a, b) {
   if (!a || !b) return Infinity;
@@ -114,7 +122,7 @@ export default function DriverView({ selectedFleet }) {
   // Never default every driver session to the CGG test coach.
   // The selected/phone vehicle must be the source of truth so 200+ coaches
   // can each have their own tracking, route push and active route.
-  const defaultVehicle = selectedFleet || fleetData[0];
+  const defaultVehicle = selectedFleet || getManagedFleet()[0] || fleetData[0];
 
   const [vehicle, setVehicle] = useState(defaultVehicle);
   const [vehicleSelected, setVehicleSelected] = useState(false);
@@ -140,6 +148,7 @@ export default function DriverView({ selectedFleet }) {
   const [offRoute, setOffRoute] = useState(false);
   const [trafficFlow, setTrafficFlow] = useState(null);
   const selectedVehicleRef = useRef(defaultVehicle.fleetNo);
+  const currentVehicleRef = useRef(defaultVehicle);
   const watchId = useRef(null);
   const rerouteLock = useRef(false);
   const wakeLockRef = useRef(null);
@@ -157,11 +166,17 @@ export default function DriverView({ selectedFleet }) {
     return metresBetween(lastPosition, nextStep.location);
   }, [lastPosition, nextStep]);
 
-  const companies = useMemo(() => [...new Set(fleetData.map((item) => item.category || item.operator))], []);
+  const availableFleet = useMemo(() => getManagedFleet(), []);
+  const companies = useMemo(() => [...new Set(availableFleet.map((item) => item.category || item.operator))], [availableFleet]);
   const companyVehicles = useMemo(
-    () => fleetData.filter((item) => (item.category || item.operator) === selectedCompany),
-    [selectedCompany],
+    () => availableFleet.filter((item) => (item.category || item.operator) === selectedCompany),
+    [availableFleet, selectedCompany],
   );
+
+  useEffect(() => {
+    currentVehicleRef.current = vehicle;
+    selectedVehicleRef.current = vehicle?.fleetNo;
+  }, [vehicle]);
 
   const remainingNav = useMemo(() => {
     const steps = (routeSummary?.instructions || []).slice(activeStepIndex);
@@ -219,10 +234,11 @@ export default function DriverView({ selectedFleet }) {
       return;
     }
 
-    const assignedVehicle = fleetData.find((item) => item.fleetNo === profile.preferredFleetNo) || vehicle || fleetData[0];
+    const assignedVehicle = availableFleet.find((item) => item.fleetNo === profile.preferredFleetNo) || vehicle || availableFleet[0] || fleetData[0];
     setDriverProfile(profile);
     setVehicle(assignedVehicle);
     selectedVehicleRef.current = assignedVehicle.fleetNo;
+    currentVehicleRef.current = assignedVehicle;
     setVehicleSelected(true);
     setLoginError("");
     clearLocalRouteState();
@@ -237,12 +253,28 @@ export default function DriverView({ selectedFleet }) {
   const switchVehicle = (item) => {
     setVehicle(item);
     selectedVehicleRef.current = item.fleetNo;
+    currentVehicleRef.current = item;
     clearLocalRouteState();
     setNavMode(false);
     setDestination("");
     setStops([]);
     setRouteStatus(`Selected ${item.fleetNo} / ${item.reg}`);
     setLastAction(`Vehicle changed to ${item.fleetNo} / ${item.reg}`);
+
+    // Immediately republish the last GPS fix under the new selected coach.
+    // Otherwise the office keeps seeing the phone under the old coach until
+    // the browser receives another geolocation update.
+    if (lastPosition?.lat && lastPosition?.lng) {
+      postLocation({
+        coords: {
+          latitude: lastPosition.lat,
+          longitude: lastPosition.lng,
+          accuracy: lastPosition.accuracy,
+          speed: lastPosition.speedMps,
+          heading: lastPosition.heading,
+        },
+      });
+    }
   };
 
   const notify = (text, type = "INFO") => {
@@ -252,12 +284,13 @@ export default function DriverView({ selectedFleet }) {
 
   const postLocation = async (position) => {
     const coords = position.coords;
+    const activeVehicle = currentVehicleRef.current || vehicle;
 
     const payload = {
-      fleetNo: vehicle.fleetNo,
-      reg: vehicle.reg,
-      operator: vehicle.operator,
-      depot: vehicle.depot,
+      fleetNo: activeVehicle.fleetNo,
+      reg: activeVehicle.reg,
+      operator: activeVehicle.operator,
+      depot: activeVehicle.depot,
       lat: coords.latitude,
       lng: coords.longitude,
       accuracy: coords.accuracy,
@@ -278,7 +311,7 @@ export default function DriverView({ selectedFleet }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      setLastAction(`Tracking live for ${vehicle.fleetNo} / ${vehicle.reg}`);
+      setLastAction(`Tracking live for ${activeVehicle.fleetNo} / ${activeVehicle.reg}`);
     } catch (error) {
       console.error(error);
       setTrackingError("Could not send GPS to office");
