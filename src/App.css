@@ -2733,3 +2733,80 @@ body {
 .satnav-actions {
   bottom: 18px !important;
 }
+
+
+/* V3.22 TomTom diagnostics + driver UX polish */
+.driver-tomtom-status-card {
+  background: #0b1828;
+  border: 1px solid #1f3a57;
+  color: white;
+  border-radius: 18px;
+  padding: 12px 16px;
+  margin: -4px 0 14px;
+  display: grid;
+  gap: 4px;
+}
+.driver-tomtom-status-card span {
+  color: #9bdcff;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.driver-tomtom-status-card small {
+  color: #9fb3c8;
+}
+.tomtom-debug-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 136px;
+  z-index: 1150;
+  background: rgba(6, 16, 29, 0.92);
+  color: white;
+  border: 1px solid rgba(155, 220, 255, 0.35);
+  border-radius: 14px;
+  padding: 9px 11px;
+  display: grid;
+  gap: 2px;
+  min-width: 118px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+}
+.tomtom-debug-badge strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #9bdcff;
+}
+.tomtom-debug-badge span {
+  font-size: 15px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.tomtom-debug-badge small {
+  color: #c6d5e7;
+  font-size: 11px;
+}
+.driver-manual-route-details {
+  opacity: .96;
+}
+.driver-manual-route-details > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.driver-manual-route-details > summary::after {
+  content: 'Controller routes preferred';
+  font-size: 12px;
+  color: #9fb3c8;
+  font-weight: 700;
+}
+@media (max-width: 700px) {
+  .driver-tomtom-status-card,
+  .driver-gps-status-card {
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+  .tomtom-debug-badge {
+    bottom: 180px;
+    left: 10px;
+    max-width: 132px;
+  }
+}

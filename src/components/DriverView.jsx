@@ -200,6 +200,7 @@ export default function DriverView({ selectedFleet }) {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [offRoute, setOffRoute] = useState(false);
   const [trafficFlow, setTrafficFlow] = useState(null);
+  const [tomTomStatus, setTomTomStatus] = useState({ status: "not checked", lastCheck: null, sampledPoints: 0, returnedFlows: 0 });
   const selectedVehicleRef = useRef(defaultVehicle.fleetNo);
   const currentVehicleRef = useRef(defaultVehicle);
   const watchId = useRef(null);
@@ -585,9 +586,15 @@ export default function DriverView({ selectedFleet }) {
       fetch(`/api/tomtom-traffic?lat=${lastPosition.lat}&lng=${lastPosition.lng}&span=0.25${pointsPart}`)
         .then((res) => res.json())
         .then((data) => {
-          if (!cancelled && data?.ok) setTrafficFlow(data.flow || null);
+          if (!cancelled && data?.ok) {
+            setTrafficFlow(data.flow || null);
+            setTomTomStatus(data.diagnostics || { status: data.flow ? "connected" : "no-flow", lastCheck: new Date().toISOString() });
+          }
         })
-        .catch((err) => console.error('Driver TomTom flow failed', err));
+        .catch((err) => {
+          console.error('Driver TomTom flow failed', err);
+          if (!cancelled) setTomTomStatus({ status: 'error', error: String(err), lastCheck: new Date().toISOString() });
+        });
     };
 
     loadFlow();
@@ -866,7 +873,7 @@ export default function DriverView({ selectedFleet }) {
             <div className="speed-limit-circle">
               <span>TRAFFIC</span>
               <strong>{trafficFlow?.currentSpeed != null ? Math.round(Number(trafficFlow.currentSpeed)) : '--'}</strong>
-              <small>{trafficFlow?.freeFlowSpeed != null ? `free ${Math.round(Number(trafficFlow.freeFlowSpeed))} mph` : 'TomTom flow'}</small>
+              <small>{trafficFlow?.freeFlowSpeed != null ? `free ${Math.round(Number(trafficFlow.freeFlowSpeed))} mph` : tomTomStatus.status}</small>
             </div>
             <div className="current-speed-box">
               <span>YOU</span>
@@ -900,8 +907,8 @@ export default function DriverView({ selectedFleet }) {
   const routePlannerPanel = (
     <section className="driver-route-planner-card route-card-large">
       <div>
-        <h2>{routeSummary ? 'Set a different route' : 'Set Route'}</h2>
-        <p>Search supports streets, stations, airports, venues and services.</p>
+        <h2>{routeSummary ? 'Manual destination' : 'Set Route'}</h2>
+        <p>Manual driver destination. Normal routes should be pushed from Control.</p>
       </div>
 
       <div className="driver-route-inputs route-inputs-wide">
@@ -977,6 +984,14 @@ export default function DriverView({ selectedFleet }) {
         {!lastPosition?.lat && <small>Routes can still be built from the selected coach depot while the phone gets a GPS lock.</small>}
       </section>
 
+      <section className="driver-tomtom-status-card">
+        <strong>TomTom traffic</strong>
+        <span>{tomTomStatus.status || 'checking'}</span>
+        <small>{tomTomStatus.lastCheck ? `Last check ${new Date(tomTomStatus.lastCheck).toLocaleTimeString('en-GB')}` : 'Waiting for route/GPS sample'}</small>
+        <small>{tomTomStatus.sampledPoints || 0} samples · {tomTomStatus.returnedFlows || 0} flow replies</small>
+        {trafficFlow?.currentSpeed != null && <small>Flow {Math.round(Number(trafficFlow.currentSpeed))} mph · free {Math.round(Number(trafficFlow.freeFlowSpeed || trafficFlow.currentSpeed))} mph</small>}
+      </section>
+
       {pendingRoutePush && (
         <section className="driver-route-update-banner">
           <div>
@@ -1002,7 +1017,7 @@ export default function DriverView({ selectedFleet }) {
 
       {routeSummary ? (
         <details className="driver-manual-route-details">
-          <summary>Need to set a different route?</summary>
+          <summary>Manual destination / diversion</summary>
           {routePlannerPanel}
         </details>
       ) : routePlannerPanel}

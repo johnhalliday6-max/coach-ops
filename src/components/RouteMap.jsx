@@ -109,7 +109,7 @@ function trafficRatio(flow) {
 }
 
 function trafficStatus(flow) {
-  if (!flow) return { label: "WAITING", detail: "TomTom", color: "#64748b" };
+  if (!flow) return { label: "NO DATA", detail: "TomTom checked", color: "#64748b" };
   if (flow.roadClosure) return { label: "CLOSED", detail: "road closed", color: "#ef4444" };
   const ratio = trafficRatio(flow);
   if (ratio == null) return { label: "LIVE", detail: "TomTom", color: "#64748b" };
@@ -199,6 +199,7 @@ export default function RouteMap({
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [tomTomTraffic, setTomTomTraffic] = useState([]);
   const [trafficFlow, setTrafficFlow] = useState(null);
+  const [trafficDiagnostics, setTrafficDiagnostics] = useState(null);
   const [trackedVehicle, setTrackedVehicle] = useState(null);
   const [displayVehicle, setDisplayVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
@@ -256,9 +257,13 @@ export default function RouteMap({
           if (!cancelled && data?.ok) {
             setTomTomTraffic(Array.isArray(data.incidents) ? data.incidents : []);
             setTrafficFlow(data.flow || null);
+            setTrafficDiagnostics(data.diagnostics || { status: data.flow ? "connected" : "no-flow", lastCheck: new Date().toISOString() });
           }
         })
-        .catch((err) => console.error('TomTom traffic error:', err));
+        .catch((err) => {
+          console.error('TomTom traffic error:', err);
+          if (!cancelled) setTrafficDiagnostics({ status: 'error', error: String(err), lastCheck: new Date().toISOString() });
+        });
     };
 
     loadTraffic();
@@ -457,6 +462,15 @@ export default function RouteMap({
     )}
     {navigationMode && autoFollow && (
       <div className="map-follow-badge">LIVE FOLLOW</div>
+    )}
+
+    {navigationMode && (
+      <div className="tomtom-debug-badge">
+        <strong>TomTom</strong>
+        <span>{trafficDiagnostics?.status || 'checking'}</span>
+        <small>{trafficDiagnostics?.lastCheck ? new Date(trafficDiagnostics.lastCheck).toLocaleTimeString('en-GB') : 'not checked yet'}</small>
+        {trafficDiagnostics?.sampledPoints != null && <small>{trafficDiagnostics.sampledPoints} samples / {trafficDiagnostics.returnedFlows || 0} flows</small>}
+      </div>
     )}
     {navigationMode && (
       <div className="map-traffic-speed-badge">

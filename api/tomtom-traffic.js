@@ -131,7 +131,7 @@ async function fetchFlow(key, query) {
     return (a.congestionRatio ?? 1) - (b.congestionRatio ?? 1)
   })[0] || null
 
-  return { flow: worst, flows }
+  return { flow: worst, flows, sampledPoints: points.length }
 }
 
 export default async function handler(req, res) {
@@ -164,6 +164,13 @@ export default async function handler(req, res) {
       incidents,
       flow: flowData.flow || null,
       flows: flowData.flows || [],
+      diagnostics: {
+        status: flowData.flow ? 'connected' : 'no-flow',
+        sampledPoints: flowData.sampledPoints || 0,
+        returnedFlows: Array.isArray(flowData.flows) ? flowData.flows.length : 0,
+        lastCheck: new Date().toISOString(),
+        bbox,
+      },
       warning: incidentsResult.status === 'rejected' ? incidentsResult.reason?.message : null,
     })
   } catch (error) {
