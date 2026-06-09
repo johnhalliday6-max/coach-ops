@@ -119,6 +119,12 @@ function trafficStatus(flow) {
   return { label: "CLEAR", detail: "free flow", color: "#20d86b" };
 }
 
+function isRecentLiveVehicle(vehicle) {
+  if (!vehicle?.lat || !vehicle?.lng || !vehicle?.updatedAt) return false;
+  const ageMs = Date.now() - new Date(vehicle.updatedAt).getTime();
+  return Number.isFinite(ageMs) && ageMs < 2 * 60 * 1000;
+}
+
 function mph(speedMps) {
   if (speedMps == null || Number.isNaN(Number(speedMps))) return null;
   return Math.max(0, Math.round(Number(speedMps) * 2.23694));
@@ -285,7 +291,7 @@ export default function RouteMap({
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {
-            setTrackedVehicle(data.vehicle || null);
+            setTrackedVehicle(isRecentLiveVehicle(data.vehicle) ? data.vehicle : null);
           }
         })
         .catch((err) => console.error("Tracking fetch error:", err));
@@ -329,6 +335,7 @@ export default function RouteMap({
 
   const visibleRoute = routeOverride || plannedRoute;
   const liveVehicle = navigationMode ? trackedVehicle : (displayVehicle || trackedVehicle);
+  const hasLiveVehicle = Boolean(liveVehicle?.lat && liveVehicle?.lng);
   const heading = Number(liveVehicle?.heading || 0);
   const coachIcon = useMemo(
     () =>
@@ -340,24 +347,21 @@ export default function RouteMap({
       }),
     [fleetNo, heading],
   );
-  const coachPosition =
-    liveVehicle?.lat && liveVehicle?.lng
-      ? [liveVehicle.lat, liveVehicle.lng]
-      : visibleRoute?.start
-        ? [visibleRoute.start.lat, visibleRoute.start.lng]
-        : [54.4863, -0.6133];
+  const routeStartPosition = visibleRoute?.start ? [visibleRoute.start.lat, visibleRoute.start.lng] : null;
+  const coachPosition = hasLiveVehicle ? [liveVehicle.lat, liveVehicle.lng] : null;
+  const mapCenter = coachPosition || routeStartPosition || [54.4863, -0.6133];
 
   const speed = mph(liveVehicle?.speedMps);
   const roadSpeed = trafficFlow?.currentSpeed != null ? Math.round(Number(trafficFlow.currentSpeed)) : null;
   const freeFlowSpeed = trafficFlow?.freeFlowSpeed != null ? Math.round(Number(trafficFlow.freeFlowSpeed)) : null;
   const trafficState = trafficStatus(trafficFlow);
   const rawRouteLine = visibleRoute?.geometry?.length > 1 ? visibleRoute.geometry : [];
-  const trimIndex = navigationMode && liveVehicle ? Math.max(0, nearestRouteIndex(liveVehicle, rawRouteLine) - 2) : 0;
+  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, nearestRouteIndex(liveVehicle, rawRouteLine) - 2) : 0;
   const activeRouteLine = rawRouteLine.slice(trimIndex);
   const routeId = visibleRoute?.updatedAt || `${activeRouteLine.length}-${visibleRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;
   void showDefaultRoute;
-  const center = navigationMode || followCoach ? coachPosition : coachPosition || [52.6, -0.6];
+  const center = navigationMode || followCoach ? mapCenter : mapCenter || [52.6, -0.6];
 
   return (
     <div className={navigationMode ? "route-map-shell navigation" : "route-map-shell"} style={{ height, width: "100%" }}>
@@ -382,8 +386,8 @@ export default function RouteMap({
       />
       <ManualMapWatcher enabled={navigationMode} onManualMove={() => setAutoFollow(false)} />
       <FollowCoach
-        position={coachPosition}
-        enabled={followCoach || navigationMode}
+        position={coachPosition || mapCenter}
+        enabled={(followCoach || navigationMode) && hasLiveVehicle}
         autoFollow={autoFollow}
         zoom={navigationMode ? 17 : 15}
         navigationMode={navigationMode}
@@ -404,7 +408,7 @@ export default function RouteMap({
 
 
       {!navigationMode && visibleRoute?.start && (
-        <Marker position={[visibleRoute.start.lat, visibleRoute.start.lng]} icon={stopIcon}>
+        <Marker position={[visibleRoute.start.lat, visibleRoute.start.lng]} icon={plannedStopIcon}>
           <Popup><strong>Start</strong><br />{visibleRoute.start.label}</Popup>
         </Marker>
       )}
@@ -427,15 +431,17 @@ export default function RouteMap({
         </Marker>
       )}
 
+      {hasLiveVehicle && (
       <Marker position={coachPosition} icon={coachIcon}>
         <Popup>
           <strong>{fleetNo}</strong><br />
           Reg: {liveVehicle?.reg || reg}<br />
-          {liveVehicle ? "Live phone GPS" : "Waiting for live GPS"}
+          Live phone GPS
           {speed != null && (<><br />Current speed: {speed} mph</>)}
           {liveVehicle?.accuracy && (<><br />Accuracy: ±{Math.round(liveVehicle.accuracy)}m</>)}
         </Popup>
       </Marker>
+      )}
 
       {highwaysAlerts.map((alert) => (
         <Marker key={`highways-${alert.id}`} position={[alert.lat, alert.lng]} icon={closureIcon}>

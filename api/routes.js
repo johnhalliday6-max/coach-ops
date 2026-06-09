@@ -5,7 +5,12 @@ const store = globalThis.__coachOpsRoutesStore || new Map()
 globalThis.__coachOpsRoutesStore = store
 
 function memoryRoutes() {
-  return Array.from(store.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+  const unique = new Map()
+  Array.from(store.values()).forEach((route) => {
+    const key = route?.vehicleKey || `${route?.fleetNo || ''}-${route?.reg || ''}-${route?.updatedAt || ''}`
+    if (key && !unique.has(key)) unique.set(key, route)
+  })
+  return Array.from(unique.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
 }
 
 function toDbRoute(route) {
@@ -73,7 +78,8 @@ export default async function handler(req, res) {
         updatedAt: body.updatedAt || new Date().toISOString(),
       }
 
-      store.set(vehicleId, route)
+      const aliasKeys = [vehicleId, ...legacyVehicleKeys(body)]
+      aliasKeys.forEach((key) => store.set(key, route))
 
       if (hasSupabase()) {
         try {
