@@ -5,6 +5,26 @@ import { bodyVehicleScope, cleanVehiclePart, parseScopedVehicleKey, requestVehic
 const store = globalThis.__coachOpsRequestsStore || []
 globalThis.__coachOpsRequestsStore = store
 
+const ROUTE_MESSAGE_MARKER = '\n__COACH_OPS_ROUTE__='
+
+function encodeRouteMessage(message, route) {
+  if (!route) return message || ''
+  return `${message || ''}${ROUTE_MESSAGE_MARKER}${JSON.stringify(route)}`
+}
+
+function decodeRouteMessage(message) {
+  const text = String(message || '')
+  const index = text.indexOf(ROUTE_MESSAGE_MARKER)
+  if (index < 0) return { message: text, route: null }
+  const displayMessage = text.slice(0, index)
+  const encodedRoute = text.slice(index + ROUTE_MESSAGE_MARKER.length)
+  try {
+    return { message: displayMessage, route: JSON.parse(encodedRoute) }
+  } catch {
+    return { message: displayMessage, route: null }
+  }
+}
+
 function memoryRequests(vehicleId, includeClosed, fallbackKeys = []) {
   return (vehicleId ? store.filter((item) => [vehicleId, ...fallbackKeys].includes(cleanVehiclePart(item.vehicleKey || item.fleetNo))) : store)
     .filter((item) => includeClosed || item.status !== 'closed')
@@ -20,6 +40,7 @@ function companyForVehicle(vehicleId) {
 function fromDbIncident(row) {
   const company = companyForVehicle(row.vehicle)
   const parsed = parseScopedVehicleKey(row.vehicle)
+  const decoded = decodeRouteMessage(row.message)
   return {
     id: String(row.id),
     vehicleKey: cleanVehiclePart(row.vehicle),
@@ -30,7 +51,8 @@ function fromDbIncident(row) {
     company,
     depot: 'Whitby',
     type: row.type || 'MESSAGE',
-    message: row.message || '',
+    message: decoded.message,
+    route: decoded.route,
     source: String(row.type || '').startsWith('ROUTE_PUSH') ? 'office' : 'driver',
     status: String(row.status || 'OPEN').toLowerCase() === 'closed' ? 'closed' : 'new',
     createdAt: row.created_at,
@@ -55,6 +77,7 @@ export default async function handler(req, res) {
         depot: body.depot || 'Whitby',
         type: body.type || 'MESSAGE',
         message: body.message || '',
+        route: body.route || null,
         source: body.source || 'driver',
         status: body.status || 'new',
         createdAt: new Date().toISOString(),
@@ -70,7 +93,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               vehicle: vehicleId,
               type: request.type,
-              message: request.message,
+              message: encodeRouteMessage(request.message, request.route),
               status: request.status === 'closed' ? 'CLOSED' : 'OPEN',
               created_at: request.createdAt,
             }),

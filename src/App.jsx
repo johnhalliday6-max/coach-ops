@@ -281,7 +281,10 @@ function App() {
                 request.operator === company || request.company === company || request.category === company
               );
             });
-            setOfficeRequests(visibleRequests.slice(0, 8));
+            visibleRequests.forEach((request) => {
+              if (request.route?.geometry?.length) cacheRouteForVehicle(request.route, request);
+            });
+            setOfficeRequests(visibleRequests.filter((request) => request.type !== "ROUTE_SYNC").slice(0, 8));
           }
         })
         .catch((err) => console.error("Office requests fetch failed", err));

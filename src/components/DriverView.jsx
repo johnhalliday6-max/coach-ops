@@ -251,7 +251,7 @@ export default function DriverView({ selectedFleet }) {
     };
   }, [routeSummary, activeStepIndex]);
 
-  const postOfficeRequest = async (type, text, source = "driver") => {
+  const postOfficeRequest = async (type, text, source = "driver", extra = {}) => {
     const activeVehicle = currentVehicleRef.current || vehicle;
     try {
       await fetch("/api/requests", {
@@ -268,6 +268,7 @@ export default function DriverView({ selectedFleet }) {
           type,
           message: text,
           source,
+          ...extra,
         }),
       });
     } catch (error) {
@@ -516,13 +517,15 @@ export default function DriverView({ selectedFleet }) {
         throw new Error(saveData?.error || "Could not sync route to office");
       }
 
+      const savedDriverRoute = saveData.route || activeRoutePayload;
       setPendingRoutePush(null);
-      setRouteSummary(saveData.route || activeRoutePayload);
+      setRouteSummary(savedDriverRoute);
       setActiveStepIndex(0);
       setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
       setLastAction(`Navigation mode active for ${activeVehicle.fleetNo}`);
       setNavMode(true);
       requestWakeLock();
+      await postOfficeRequest("ROUTE_SYNC", `Route geometry synced for ${activeVehicle.fleetNo}`, "driver", { route: savedDriverRoute });
       await postOfficeRequest(
         "ROUTE_SET",
         `Driver set route to ${destination}${stops.length ? ` via ${stops.join(" → ")}` : ""}`,
