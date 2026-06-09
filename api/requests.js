@@ -1,30 +1,30 @@
 import { hasSupabase, supabaseFetch } from './lib/storage.js'
 import { fleetData } from '../src/data/fleetData.js'
+import { bodyVehicleScope, cleanVehiclePart, parseScopedVehicleKey, requestVehicleScope } from './lib/vehicleIdentity.js'
 
 const store = globalThis.__coachOpsRequestsStore || []
 globalThis.__coachOpsRequestsStore = store
 
-function cleanVehicleId(value) {
-  return String(value || '').trim().toUpperCase()
-}
-
-function memoryRequests(vehicleId, includeClosed) {
-  return (vehicleId ? store.filter((item) => cleanVehicleId(item.fleetNo) === vehicleId) : store)
+function memoryRequests(vehicleId, includeClosed, fallbackKeys = []) {
+  return (vehicleId ? store.filter((item) => [vehicleId, ...fallbackKeys].includes(cleanVehiclePart(item.vehicleKey || item.fleetNo))) : store)
     .filter((item) => includeClosed || item.status !== 'closed')
 }
 
 function companyForVehicle(vehicleId) {
-  const clean = cleanVehicleId(vehicleId)
-  const match = fleetData.find((vehicle) => cleanVehicleId(vehicle.fleetNo) === clean || cleanVehicleId(vehicle.reg) === clean)
+  const clean = cleanVehiclePart(vehicleId)
+  const parsed = parseScopedVehicleKey(clean)
+  const match = fleetData.find((vehicle) => cleanVehiclePart(vehicle.fleetNo) === parsed.fleetNo || cleanVehiclePart(vehicle.reg) === parsed.reg || cleanVehiclePart(vehicle.fleetNo) === clean || cleanVehiclePart(vehicle.reg) === clean)
   return match?.category || match?.operator || 'Unknown'
 }
 
 function fromDbIncident(row) {
   const company = companyForVehicle(row.vehicle)
+  const parsed = parseScopedVehicleKey(row.vehicle)
   return {
     id: String(row.id),
-    fleetNo: cleanVehicleId(row.vehicle),
-    reg: cleanVehicleId(row.vehicle),
+    vehicleKey: cleanVehiclePart(row.vehicle),
+    fleetNo: parsed.fleetNo,
+    reg: parsed.reg || parsed.fleetNo,
     operator: company,
     category: company,
     company,
@@ -41,13 +41,14 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = req.body || {}
-      const vehicleId = cleanVehicleId(body.fleetNo || body.vehicleId || body.reg)
+      const vehicleId = bodyVehicleScope(body)
       if (!vehicleId) return res.status(400).json({ ok: false, error: 'Missing vehicle id' })
 
       const request = {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        fleetNo: vehicleId,
-        reg: body.reg || vehicleId,
+        vehicleKey: vehicleId,
+        fleetNo: cleanVehiclePart(body.fleetNo || body.vehicleId || body.reg),
+        reg: body.reg || body.fleetNo || body.vehicleId,
         operator: body.operator || body.company || body.category || 'Unknown',
         category: body.category || body.company || body.operator || 'Unknown',
         company: body.company || body.category || body.operator || 'Unknown',
@@ -123,14 +124,21 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const vehicleId = requestVehicleScope(req.query)
+      const fallbackKeys = [cleanVehiclePart(req.query?.vehicle), cleanVehiclePart(req.query?.reg)].filter(Boolean)
       const includeClosed = String(req.query?.includeClosed || '') === 'true'
 
       if (hasSupabase()) {
         try {
           let query = 'incidents?order=created_at.desc&limit=100'
           if (vehicleId) query = `incidents?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=100`
-          const rows = await supabaseFetch(query)
+          let rows = await supabaseFetch(query)
+          if (vehicleId && (!Array.isArray(rows) || !rows.length)) {
+            for (const legacyKey of fallbackKeys) {
+              rows = await supabaseFetch(`incidents?vehicle=eq.${encodeURIComponent(legacyKey)}&order=created_at.desc&limit=100`)
+              if (Array.isArray(rows) && rows.length) break
+            }
+          }
           const requests = (Array.isArray(rows) ? rows : [])
             .map(fromDbIncident)
             .filter((item) => includeClosed || item.status !== 'closed')
@@ -140,7 +148,7 @@ export default async function handler(req, res) {
         }
       }
 
-      return res.status(200).json({ ok: true, requests: memoryRequests(vehicleId, includeClosed) })
+      return res.status(200).json({ ok: true, requests: memoryRequests(vehicleId, includeClosed, fallbackKeys) })
     }
 
     return res.status(405).json({ ok: false, error: 'Method not allowed' })

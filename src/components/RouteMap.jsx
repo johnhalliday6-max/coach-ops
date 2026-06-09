@@ -9,6 +9,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { vehicleLookupParams } from "../shared/vehicleIdentity";
 
 const stopIcon = L.divIcon({
   className: "map-emoji-marker stop-marker",
@@ -189,6 +190,7 @@ export default function RouteMap({
   height = "700px",
   fleetNo = "23031",
   reg = "YJ72 CGG",
+  vehicle = null,
   liveTracking = false,
   followCoach = false,
   navigationMode = false,
@@ -204,6 +206,7 @@ export default function RouteMap({
   const [displayVehicle, setDisplayVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
   const [autoFollow, setAutoFollow] = useState(true);
+  const lookupVehicle = useMemo(() => vehicle || { fleetNo, reg }, [vehicle, fleetNo, reg]);
 
   useEffect(() => {
     fetch("/api/highways")
@@ -278,7 +281,7 @@ export default function RouteMap({
     let cancelled = false;
 
     const loadTracking = () => {
-      fetch(`/api/tracking?vehicle=${encodeURIComponent(fleetNo)}&_=${Date.now()}`, { cache: "no-store" })
+      fetch(`/api/tracking?${vehicleLookupParams(lookupVehicle)}&_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {
@@ -295,13 +298,13 @@ export default function RouteMap({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [fleetNo, liveTracking]);
+  }, [lookupVehicle, liveTracking]);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadRoute = () => {
-      fetch(`/api/routes?vehicle=${encodeURIComponent(fleetNo)}&_=${Date.now()}`, { cache: "no-store" })
+      fetch(`/api/routes?${vehicleLookupParams(lookupVehicle)}&_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {
@@ -318,7 +321,7 @@ export default function RouteMap({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [fleetNo]);
+  }, [lookupVehicle]);
 
   useEffect(() => {
     if (navigationMode) setAutoFollow(true);
@@ -464,7 +467,7 @@ export default function RouteMap({
       <div className="map-follow-badge">LIVE FOLLOW</div>
     )}
 
-    {navigationMode && (
+    {navigationMode && routeOverride?.showDiagnostics && (
       <div className="tomtom-debug-badge">
         <strong>TomTom</strong>
         <span>{trafficDiagnostics?.status || 'checking'}</span>

@@ -11,6 +11,7 @@ import DriverView from "./components/DriverView";
 import OfficeRouteTools from "./components/OfficeRouteTools";
 import RouteLibraryPage from "./components/RouteLibraryPage";
 import TrafficLive from "./components/TrafficLive";
+import { normaliseVehiclePart, vehicleLookupParams, vehicleScopeKey } from "./shared/vehicleIdentity";
 
 const PROTECTED_DEVELOPER_STAFF_ID = "1600026";
 
@@ -80,7 +81,6 @@ function App() {
   const [officeCompany, setOfficeCompany] = useState(() => window.localStorage.getItem("coachOpsOfficeCompany") || "All");
   const [liveVehicles, setLiveVehicles] = useState([]);
   const [officeRequests, setOfficeRequests] = useState([]);
-  const [activeOfficeRoute, setActiveOfficeRoute] = useState(null);
   const [officeRouteCache, setOfficeRouteCache] = useState(() => {
     try {
       return JSON.parse(window.localStorage.getItem("coachOpsOfficeRouteCache") || "{}");
@@ -113,8 +113,10 @@ function App() {
 
   const vehicleRouteKeys = (vehicle) => {
     const keys = [];
-    const fleet = String(vehicle?.fleetNo || "").trim().toUpperCase();
-    const reg = String(vehicle?.reg || "").trim().toUpperCase();
+    const scoped = vehicleScopeKey(vehicle);
+    const fleet = normaliseVehiclePart(vehicle?.fleetNo);
+    const reg = normaliseVehiclePart(vehicle?.reg);
+    if (scoped) keys.push(scoped);
     if (fleet) keys.push(fleet);
     if (reg && reg !== fleet) keys.push(reg);
     return keys;
@@ -126,7 +128,8 @@ function App() {
     const keys = new Set([
       ...vehicleRouteKeys(fallbackVehicle),
       ...vehicleRouteKeys(route),
-      String(route?.vehicle || "").trim().toUpperCase(),
+      normaliseVehiclePart(route?.vehicle),
+      normaliseVehiclePart(route?.vehicleKey),
     ].filter(Boolean));
     keys.forEach((key) => { next[key] = route; });
     saveOfficeRouteCache(next);
@@ -140,17 +143,17 @@ function App() {
 
   const getLiveVehicle = (vehicle) => {
     const keys = vehicleRouteKeys(vehicle);
-    return liveVehicles.find((live) => keys.includes(String(live?.fleetNo || "").trim().toUpperCase()) || keys.includes(String(live?.reg || "").trim().toUpperCase()));
+    return liveVehicles.find((live) => vehicleRouteKeys(live).some((key) => keys.includes(key)));
   };
 
-  const getVehicleRoute = (vehicle) => {
-    return vehicleRouteKeys(vehicle).map((key) => officeRouteCacheRef.current[key]).find(Boolean) || null;
+  const getVehicleRoute = (vehicle, cache) => {
+    return vehicleRouteKeys(vehicle).map((key) => cache[key]).find(Boolean) || null;
   };
 
-  const getVehicleOfficeStatus = (vehicle) => {
+  const getVehicleOfficeStatus = (vehicle, routeCache = officeRouteCache) => {
     const live = getLiveVehicle(vehicle);
     if (isRecentTracking(live)) return { label: "Tracking", className: "tracking", icon: "📡" };
-    if (getVehicleRoute(vehicle)) return { label: "Route Set", className: "route-set", icon: "🗺️" };
+    if (getVehicleRoute(vehicle, routeCache)) return { label: "Route Set", className: "route-set", icon: "🗺️" };
     return { label: "Available", className: "available", icon: "⚪" };
   };
 
@@ -307,10 +310,6 @@ function App() {
 
     let cancelled = false;
     const selectedKeys = vehicleRouteKeys(selectedFleet);
-    const selectedVehicleId = selectedKeys[0];
-
-    const cachedRoute = selectedKeys.map((key) => officeRouteCacheRef.current[key]).find(Boolean);
-    if (cachedRoute) setActiveOfficeRoute(cachedRoute);
 
     const loadActiveRoutes = async () => {
       const stamp = Date.now();
@@ -324,8 +323,10 @@ function App() {
         const nextCache = { ...officeRouteCacheRef.current };
         (allData.routes || []).forEach((route) => {
           const routeKeys = vehicleRouteKeys(route);
-          const routeVehicle = String(route?.vehicle || "").trim().toUpperCase();
+          const routeVehicle = normaliseVehiclePart(route?.vehicle);
+          const routeVehicleKey = normaliseVehiclePart(route?.vehicleKey);
           if (routeVehicle) routeKeys.push(routeVehicle);
+          if (routeVehicleKey) routeKeys.push(routeVehicleKey);
           routeKeys.filter(Boolean).forEach((key) => { nextCache[key] = route; });
         });
         saveOfficeRouteCache(nextCache);
@@ -337,7 +338,7 @@ function App() {
         // can briefly lag and old route must remain until explicit Clear.
         if (!matchingRoute && selectedKeys.length) {
           for (const lookupKey of selectedKeys) {
-            const response = await fetch(`/api/routes?vehicle=${encodeURIComponent(lookupKey)}&_=${stamp}`, {
+            const response = await fetch(`/api/routes?${vehicleLookupParams(selectedFleet)}&fallback=${encodeURIComponent(lookupKey)}&_=${stamp}`, {
               cache: "no-store",
             });
             const data = await response.json();
@@ -349,7 +350,7 @@ function App() {
           }
         }
 
-        if (!cancelled && matchingRoute) setActiveOfficeRoute(matchingRoute);
+        if (!cancelled && matchingRoute) cacheRouteForVehicle(matchingRoute, selectedFleet);
       } catch (err) {
         console.error("Office active route fetch failed", err);
       }
@@ -361,7 +362,10 @@ function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isDriverOnly, selectedFleet?.fleetNo, selectedFleet?.reg]);
+  }, [isDriverOnly, selectedFleet?.fleetNo, selectedFleet?.reg, selectedFleet?.operator, selectedFleet?.category]);
+
+  const selectedOfficeRoute = getVehicleRoute(selectedFleet, officeRouteCache);
+  const selectedOfficeStatus = getVehicleOfficeStatus(selectedFleet, officeRouteCache);
 
   const sendOfficeRoutePush = async () => {
     try {
@@ -373,6 +377,9 @@ function App() {
           reg: selectedFleet.reg,
           operator: selectedFleet.operator,
           depot: selectedFleet.depot,
+          category: selectedFleet.category || selectedFleet.operator,
+          company: companyForVehicle(selectedFleet),
+          vehicleKey: vehicleScopeKey(selectedFleet),
           type: "ROUTE_PUSH",
           source: "office",
           message: "Control has reviewed your route. Continue on the latest route shown on your map.",
@@ -416,8 +423,8 @@ function App() {
 
   const fleetStats = {
     total: filteredFleet.length,
-    tracking: filteredFleet.filter((v) => getVehicleOfficeStatus(v).className === "tracking").length,
-    routeSet: filteredFleet.filter((v) => getVehicleOfficeStatus(v).className === "route-set").length,
+    tracking: filteredFleet.filter((v) => getVehicleOfficeStatus(v, officeRouteCache).className === "tracking").length,
+    routeSet: filteredFleet.filter((v) => getVehicleOfficeStatus(v, officeRouteCache).className === "route-set").length,
     requests: officeRequests.length,
   };
 
@@ -554,8 +561,8 @@ function App() {
         <section className="statusbar">
           <strong>Fleet: {selectedFleet.fleetNo}</strong>
           <strong>Depot: {selectedFleet.depot}</strong>
-          <strong>Route: {activeOfficeRoute?.destination || "No active route"}</strong>
-          <span className={`office-status-text ${getVehicleOfficeStatus(selectedFleet).className}`}>{getVehicleOfficeStatus(selectedFleet).label}</span>
+          <strong>Route: {selectedOfficeRoute?.destination || "No active route"}</strong>
+          <span className={`office-status-text ${selectedOfficeStatus.className}`}>{selectedOfficeStatus.label}</span>
         </section>
 
         <section className="statsbar">
@@ -616,9 +623,9 @@ function App() {
                     onClick={() => setSelectedFleet(vehicle)}
                   >
                     <strong>
-                      {getVehicleOfficeStatus(vehicle).icon} {vehicle.fleetNo}
+                      {getVehicleOfficeStatus(vehicle, officeRouteCache).icon} {vehicle.fleetNo}
                     </strong>
-                    <span className={`fleet-status-pill ${getVehicleOfficeStatus(vehicle).className}`}>{getVehicleOfficeStatus(vehicle).label}</span>
+                    <span className={`fleet-status-pill ${getVehicleOfficeStatus(vehicle, officeRouteCache).className}`}>{getVehicleOfficeStatus(vehicle, officeRouteCache).label}</span>
                   </div>
                 ))}
 
@@ -637,7 +644,7 @@ function App() {
               </div>
 
               <div className="map-panel">
-                <RouteMap fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} routeOverride={activeOfficeRoute} />
+                <RouteMap vehicle={selectedFleet} fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} routeOverride={selectedOfficeRoute} />
               </div>
 
               <div className="tools-panel">
@@ -645,19 +652,17 @@ function App() {
                   selectedFleet={selectedFleet}
                   onRouteBuilt={(route) => {
                     cacheRouteForVehicle(route, selectedFleet);
-                    setActiveOfficeRoute(route);
                   }}
                   onRouteCleared={() => {
                     const next = { ...officeRouteCacheRef.current };
                     vehicleRouteKeys(selectedFleet).forEach((key) => delete next[key]);
                     saveOfficeRouteCache(next);
-                    setActiveOfficeRoute(null);
                   }}
                 />
               </div>
             </section>
 
-            <TrafficLive selectedFleet={selectedFleet} activeRoute={activeOfficeRoute} />
+            <TrafficLive selectedFleet={selectedFleet} activeRoute={selectedOfficeRoute} />
             <HighwaysLive />
 
             <section className="bottom-grid">
@@ -885,10 +890,7 @@ function App() {
           <RouteLibraryPage
             selectedFleet={selectedFleet}
             onRouteBuilt={(route) => {
-              const vehicleId = String(route?.fleetNo || selectedFleet.fleetNo || "").trim().toUpperCase();
-              officeRouteCacheRef.current = { ...officeRouteCacheRef.current, [vehicleId]: route };
-              setOfficeRouteCache(officeRouteCacheRef.current);
-              setActiveOfficeRoute(route);
+              cacheRouteForVehicle(route, selectedFleet);
             }}
             onSelectDashboard={() => setActivePage("dashboard")}
           />

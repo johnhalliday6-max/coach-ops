@@ -1,16 +1,16 @@
 import { hasSupabase, supabaseFetch } from './lib/storage.js'
+import { bodyVehicleScope, cleanVehiclePart, legacyVehicleKeys, parseScopedVehicleKey, requestVehicleScope } from './lib/vehicleIdentity.js'
 
 const store = globalThis.__coachOpsRoutePushStore || []
 globalThis.__coachOpsRoutePushStore = store
 
-function cleanVehicleId(value) {
-  return String(value || '').trim().toUpperCase()
-}
-
 function fromDb(row) {
+  const parsed = parseScopedVehicleKey(row.vehicle)
   return {
     id: String(row.id),
-    fleetNo: cleanVehicleId(row.vehicle),
+    vehicleKey: cleanVehiclePart(row.vehicle),
+    fleetNo: parsed.fleetNo,
+    reg: parsed.reg,
     route: row.route_data?.route || row.route_data || null,
     routeData: row.route_data || null,
     accepted: Boolean(row.accepted),
@@ -22,15 +22,16 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = req.body || {}
-      const vehicleId = cleanVehicleId(body.fleetNo || body.vehicle || body.reg)
+      const vehicleId = bodyVehicleScope(body)
       if (!vehicleId) return res.status(400).json({ ok: false, error: 'Missing vehicle id' })
       if (!body.route) return res.status(400).json({ ok: false, error: 'Missing route payload' })
 
       // Only one pending office route push per vehicle.
       // Older unaccepted pushes were causing drivers to keep seeing stale routes
       // such as 23031 staying stuck on Manchester Airport T2.
+      const replaceKeys = [vehicleId, ...legacyVehicleKeys(body)]
       for (let i = store.length - 1; i >= 0; i -= 1) {
-        if (cleanVehicleId(store[i]?.fleetNo) === vehicleId && !store[i]?.accepted) {
+        if (replaceKeys.includes(cleanVehiclePart(store[i]?.vehicleKey || store[i]?.fleetNo)) && !store[i]?.accepted) {
           store.splice(i, 1)
         }
       }
@@ -41,6 +42,12 @@ export default async function handler(req, res) {
             `route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}&accepted=eq.false`,
             { method: 'DELETE' },
           )
+          for (const legacyKey of legacyVehicleKeys(body)) {
+            await supabaseFetch(
+              `route_pushes?vehicle=eq.${encodeURIComponent(legacyKey)}&accepted=eq.false`,
+              { method: 'DELETE' },
+            )
+          }
         } catch (error) {
           console.warn('Supabase old route push delete failed, continuing', error.message)
         }
@@ -48,7 +55,9 @@ export default async function handler(req, res) {
 
       const push = {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        fleetNo: vehicleId,
+        vehicleKey: vehicleId,
+        fleetNo: cleanVehiclePart(body.fleetNo || body.vehicle || body.reg),
+        reg: body.reg || body.fleetNo || body.vehicle,
         route: body.route,
         routeData: { route: body.route, note: body.note || '', pushedBy: 'office' },
         accepted: false,
@@ -100,7 +109,8 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const vehicleId = requestVehicleScope(req.query)
+      const fallbackKeys = [cleanVehiclePart(req.query?.vehicle), cleanVehiclePart(req.query?.reg)].filter(Boolean)
       const includeAccepted = String(req.query?.includeAccepted || '') === 'true'
 
       if (hasSupabase()) {
@@ -111,7 +121,15 @@ export default async function handler(req, res) {
           if (vehicleId) query = includeAccepted
             ? `route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=50`
             : `route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}&accepted=eq.false&order=created_at.desc&limit=50`
-          const rows = await supabaseFetch(query)
+          let rows = await supabaseFetch(query)
+          if (vehicleId && (!Array.isArray(rows) || !rows.length)) {
+            for (const legacyKey of fallbackKeys) {
+              rows = await supabaseFetch(includeAccepted
+                ? `route_pushes?vehicle=eq.${encodeURIComponent(legacyKey)}&order=created_at.desc&limit=50`
+                : `route_pushes?vehicle=eq.${encodeURIComponent(legacyKey)}&accepted=eq.false&order=created_at.desc&limit=50`)
+              if (Array.isArray(rows) && rows.length) break
+            }
+          }
           const pushes = (Array.isArray(rows) ? rows : [])
             .map(fromDb)
             .filter((push) => includeAccepted || !push.accepted)
@@ -122,30 +140,39 @@ export default async function handler(req, res) {
       }
 
       const pushes = store
-        .filter((push) => (!vehicleId || cleanVehicleId(push.fleetNo) === vehicleId))
+        .filter((push) => (!vehicleId || [vehicleId, ...fallbackKeys].includes(cleanVehiclePart(push.vehicleKey || push.fleetNo))))
         .filter((push) => includeAccepted || !push.accepted)
       return res.status(200).json({ ok: true, push: pushes[0] || null, pushes })
     }
 
     if (req.method === 'DELETE') {
-      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const vehicleId = requestVehicleScope(req.query)
       const id = String(req.query?.id || '').trim()
 
       if (id) {
         const index = store.findIndex((push) => String(push.id) === id)
         if (index >= 0) store.splice(index, 1)
         if (hasSupabase() && /^\d+$/.test(id)) {
-          try { await supabaseFetch(`route_pushes?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }) } catch {}
+          try { await supabaseFetch(`route_pushes?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }) } catch {
+            // Memory fallback has already removed the push.
+          }
         }
         return res.status(200).json({ ok: true, deleted: id })
       }
 
       if (vehicleId) {
         for (let i = store.length - 1; i >= 0; i -= 1) {
-          if (cleanVehicleId(store[i]?.fleetNo) === vehicleId) store.splice(i, 1)
+          if ([vehicleId, ...legacyVehicleKeys({ fleetNo: req.query?.vehicle, reg: req.query?.reg })].includes(cleanVehiclePart(store[i]?.vehicleKey || store[i]?.fleetNo))) store.splice(i, 1)
         }
         if (hasSupabase()) {
-          try { await supabaseFetch(`route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }) } catch {}
+          try {
+            await supabaseFetch(`route_pushes?vehicle=eq.${encodeURIComponent(vehicleId)}`, { method: 'DELETE' })
+            for (const legacyKey of legacyVehicleKeys({ fleetNo: req.query?.vehicle, reg: req.query?.reg })) {
+              await supabaseFetch(`route_pushes?vehicle=eq.${encodeURIComponent(legacyKey)}`, { method: 'DELETE' })
+            }
+          } catch {
+            // Memory fallback has already cleared matching pushes.
+          }
         }
         return res.status(200).json({ ok: true, vehicle: vehicleId, cleared: true })
       }
@@ -158,7 +185,9 @@ export default async function handler(req, res) {
 
       store.length = 0
       if (hasSupabase()) {
-        try { await supabaseFetch('route_pushes?id=gte.0', { method: 'DELETE' }) } catch {}
+        try { await supabaseFetch('route_pushes?id=gte.0', { method: 'DELETE' }) } catch {
+          // Memory fallback has already cleared all pushes.
+        }
       }
       return res.status(200).json({ ok: true, cleared: true })
     }

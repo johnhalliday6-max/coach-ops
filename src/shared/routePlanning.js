@@ -1,3 +1,5 @@
+import { vehicleCompany, vehicleLookupParams, vehicleScopeKey } from './vehicleIdentity';
+
 const DEPOT_STARTS = {
   Whitby: { lat: 54.47587, lng: -0.62705 },
   Carnaby: { lat: 54.0845, lng: -0.2478 },
@@ -15,7 +17,7 @@ function displayRouteDestination(routeInput, fallback) {
 
 export async function getVehicleStart(vehicle) {
   try {
-    const trackingResponse = await fetch(`/api/tracking?vehicle=${encodeURIComponent(vehicle.fleetNo)}`);
+    const trackingResponse = await fetch(`/api/tracking?${vehicleLookupParams(vehicle)}`);
     const trackingData = await trackingResponse.json();
     const live = trackingData?.vehicle;
     if (live?.lat && live?.lng) return { lat: live.lat, lng: live.lng, label: 'Live vehicle GPS' };
@@ -30,11 +32,11 @@ export async function getVehicleStart(vehicle) {
 export async function clearVehicleRoute(vehicle) {
   // Explicit clear button only. Never call this as part of normal build/push,
   // otherwise one route can briefly vanish while another coach is being operated.
-  const vehicleId = vehicle?.fleetNo;
+  const vehicleId = vehicleScopeKey(vehicle);
   if (!vehicleId) throw new Error('Missing vehicle for clear');
   await Promise.allSettled([
-    fetch(`/api/routes?vehicle=${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }),
-    fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }),
+    fetch(`/api/routes?${vehicleLookupParams(vehicle)}`, { method: 'DELETE' }),
+    fetch(`/api/route-pushes?${vehicleLookupParams(vehicle)}`, { method: 'DELETE' }),
   ]);
 }
 
@@ -88,6 +90,10 @@ export async function buildVehicleRoute(vehicle, routeInput) {
     ...data.route,
     fleetNo: vehicle.fleetNo,
     reg: vehicle.reg,
+    operator: vehicle.operator,
+    category: vehicle.category || vehicle.operator,
+    company: vehicleCompany(vehicle),
+    vehicleKey: vehicleScopeKey(vehicle),
     destination: displayDestination,
     routeEndLabel: rawDestination,
     stops,
@@ -119,6 +125,8 @@ export async function pushRouteToDriver(vehicle, route) {
     body: JSON.stringify({
       fleetNo: vehicle.fleetNo,
       reg: vehicle.reg,
+      company: vehicleCompany(vehicle),
+      vehicleKey: vehicleScopeKey(vehicle),
       route,
       note: `Control pushed route ${route.routeNumber ? `${route.routeNumber} - ` : ''}${route.destination}`,
     }),
@@ -131,6 +139,9 @@ export async function pushRouteToDriver(vehicle, route) {
       fleetNo: vehicle.fleetNo,
       reg: vehicle.reg,
       operator: vehicle.operator,
+      category: vehicle.category || vehicle.operator,
+      company: vehicleCompany(vehicle),
+      vehicleKey: vehicleScopeKey(vehicle),
       depot: vehicle.depot,
       type: 'ROUTE_PUSH',
       source: 'office',

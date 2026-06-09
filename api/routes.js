@@ -1,11 +1,8 @@
 import { hasSupabase, supabaseFetch } from './lib/storage.js'
+import { bodyVehicleScope, cleanVehiclePart, legacyVehicleKeys, parseScopedVehicleKey, requestVehicleScope, vehicleCompany } from './lib/vehicleIdentity.js'
 
 const store = globalThis.__coachOpsRoutesStore || new Map()
 globalThis.__coachOpsRoutesStore = store
-
-function cleanVehicleId(value) {
-  return String(value || '').trim().toUpperCase()
-}
 
 function memoryRoutes() {
   return Array.from(store.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
@@ -13,7 +10,7 @@ function memoryRoutes() {
 
 function toDbRoute(route) {
   return {
-    vehicle: route.fleetNo,
+    vehicle: route.vehicleKey,
     destination: route.destination || 'Destination',
     stops: {
       route,
@@ -29,9 +26,13 @@ function toDbRoute(route) {
 
 function fromDbRoute(row) {
   const stored = row?.stops?.route || {}
+  const parsed = parseScopedVehicleKey(row.vehicle || stored.vehicleKey || stored.fleetNo)
   return {
     ...stored,
-    fleetNo: cleanVehicleId(row.vehicle || stored.fleetNo),
+    vehicleKey: cleanVehiclePart(row.vehicle || stored.vehicleKey),
+    fleetNo: cleanVehiclePart(stored.fleetNo || parsed.fleetNo),
+    reg: stored.reg || parsed.reg || stored.fleetNo || parsed.fleetNo,
+    company: stored.company || stored.category || stored.operator || parsed.company || 'Unassigned',
     destination: row.destination || stored.destination || 'Destination',
     stops: stored.stops || row?.stops?.stops || [],
     waypoints: stored.waypoints || row?.stops?.waypoints || [],
@@ -46,13 +47,15 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = req.body || {}
-      const vehicleId = cleanVehicleId(body.fleetNo || body.vehicleId || body.reg)
+      const vehicleId = bodyVehicleScope(body)
       if (!vehicleId) return res.status(400).json({ ok: false, error: 'Missing vehicle id' })
 
       const route = {
         ...body,
-        fleetNo: vehicleId,
-        reg: body.reg || vehicleId,
+        vehicleKey: vehicleId,
+        fleetNo: cleanVehiclePart(body.fleetNo || body.vehicleId || body.reg),
+        reg: body.reg || body.fleetNo || body.vehicleId,
+        company: body.company || body.category || body.operator || vehicleCompany(body),
         destination: body.destination || body.routeName || body.name || 'Destination',
         waypoint: body.waypoint || '',
         startLabel: body.startLabel || 'Current Location',
@@ -77,6 +80,9 @@ export default async function handler(req, res) {
           // Keep one active/latest route per vehicle. Supabase was keeping old routes,
           // which made driver/office maps show multiple stale routes.
           await supabaseFetch(`routes?vehicle=eq.${encodeURIComponent(vehicleId)}`, { method: 'DELETE' })
+          for (const legacyKey of legacyVehicleKeys(body)) {
+            await supabaseFetch(`routes?vehicle=eq.${encodeURIComponent(legacyKey)}`, { method: 'DELETE' })
+          }
           await supabaseFetch('routes', {
             method: 'POST',
             body: JSON.stringify(toDbRoute(route)),
@@ -90,15 +96,18 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const vehicleId = requestVehicleScope(req.query)
+      const fallbackKeys = [cleanVehiclePart(req.query?.fallback), cleanVehiclePart(req.query?.vehicle), cleanVehiclePart(req.query?.reg)].filter(Boolean)
 
       if (hasSupabase()) {
         try {
-          const rows = await supabaseFetch(
-            vehicleId
-              ? `routes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=1`
-              : 'routes?order=created_at.desc&limit=50',
-          )
+          let rows = await supabaseFetch(vehicleId ? `routes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=1` : 'routes?order=created_at.desc&limit=50')
+          if (vehicleId && (!Array.isArray(rows) || !rows.length)) {
+            for (const legacyKey of fallbackKeys) {
+              rows = await supabaseFetch(`routes?vehicle=eq.${encodeURIComponent(legacyKey)}&order=created_at.desc&limit=1`)
+              if (Array.isArray(rows) && rows.length) break
+            }
+          }
           const routes = (Array.isArray(rows) ? rows : []).map(fromDbRoute)
           return res.status(200).json({ ok: true, route: vehicleId ? routes[0] || null : null, routes })
         } catch (error) {
@@ -107,12 +116,15 @@ export default async function handler(req, res) {
       }
 
       const routes = memoryRoutes()
-      if (vehicleId) return res.status(200).json({ ok: true, route: store.get(vehicleId) || null, routes })
+      if (vehicleId) {
+        const route = store.get(vehicleId) || fallbackKeys.map((key) => store.get(key)).find(Boolean) || null
+        return res.status(200).json({ ok: true, route, routes })
+      }
       return res.status(200).json({ ok: true, routes })
     }
 
     if (req.method === 'DELETE') {
-      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const vehicleId = requestVehicleScope(req.query)
       const allowAll = String(req.query?.allowAll || '') === 'true'
 
       // Safety guard for multi-coach operation: a missing vehicle parameter must
@@ -121,13 +133,18 @@ export default async function handler(req, res) {
         return res.status(400).json({ ok: false, error: 'Missing vehicle id for route delete' })
       }
 
-      if (vehicleId) store.delete(vehicleId)
+      if (vehicleId) {
+        store.delete(vehicleId)
+        legacyVehicleKeys({ fleetNo: req.query?.vehicle, reg: req.query?.reg }).forEach((key) => store.delete(key))
+      }
       else store.clear()
 
       if (hasSupabase()) {
         try {
-          const path = vehicleId ? `routes?vehicle=eq.${encodeURIComponent(vehicleId)}` : 'routes?id=gte.0'
-          await supabaseFetch(path, { method: 'DELETE' })
+          const paths = vehicleId
+            ? [`routes?vehicle=eq.${encodeURIComponent(vehicleId)}`, ...legacyVehicleKeys({ fleetNo: req.query?.vehicle, reg: req.query?.reg }).map((key) => `routes?vehicle=eq.${encodeURIComponent(key)}`)]
+            : ['routes?id=gte.0']
+          for (const path of paths) await supabaseFetch(path, { method: 'DELETE' })
         } catch (error) {
           console.warn('Supabase route delete failed, using memory fallback', error.message)
         }

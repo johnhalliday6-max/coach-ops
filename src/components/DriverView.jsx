@@ -3,6 +3,7 @@ import RouteMap from "./RouteMap";
 import DriverIntel from "./DriverIntel";
 import { fleetData } from "../data/fleetData";
 import PlaceSearchBox from "./PlaceSearchBox";
+import { vehicleCompany, vehicleLookupParams, vehicleScopeKey } from "../shared/vehicleIdentity";
 
 const DRIVER_TEST_PROFILES = {
   "1600026": {
@@ -206,6 +207,7 @@ export default function DriverView({ selectedFleet }) {
   const watchId = useRef(null);
   const rerouteLock = useRef(false);
   const wakeLockRef = useRef(null);
+  const routeCacheRef = useRef({});
 
   const nextStep = useMemo(
     () => routeSummary?.instructions?.[activeStepIndex] || routeSummary?.instructions?.[0] || null,
@@ -226,6 +228,7 @@ export default function DriverView({ selectedFleet }) {
     () => availableFleet.filter((item) => (item.category || item.operator) === selectedCompany),
     [availableFleet, selectedCompany],
   );
+  const isDeveloperDriver = driverProfile?.employeeId === "1600026";
 
   useEffect(() => {
     currentVehicleRef.current = vehicle;
@@ -260,6 +263,7 @@ export default function DriverView({ selectedFleet }) {
           operator: activeVehicle.operator,
           category: activeVehicle.category || activeVehicle.operator,
           company: activeVehicle.category || activeVehicle.operator,
+          vehicleKey: vehicleScopeKey(activeVehicle),
           depot: activeVehicle.depot,
           type,
           message: text,
@@ -278,6 +282,11 @@ export default function DriverView({ selectedFleet }) {
     setPendingRoutePush(null);
     setActiveStepIndex(0);
     setOffRoute(false);
+  };
+
+  const cacheCurrentRoute = () => {
+    const key = vehicleScopeKey(currentVehicleRef.current || vehicle);
+    if (key && routeSummary) routeCacheRef.current[key] = routeSummary;
   };
 
   const loginDriver = () => {
@@ -308,15 +317,25 @@ export default function DriverView({ selectedFleet }) {
   };
 
   const switchVehicle = (item) => {
+    cacheCurrentRoute();
+    const cachedRoute = routeCacheRef.current[vehicleScopeKey(item)] || null;
     setVehicle(item);
     writeDriverSession(driverProfile, item);
     selectedVehicleRef.current = item.fleetNo;
     currentVehicleRef.current = item;
-    clearLocalRouteState();
+    if (cachedRoute) {
+      setRouteSummary(cachedRoute);
+      setDestination(cachedRoute.routeEndLabel || cachedRoute.destination || "");
+      setStops(Array.isArray(cachedRoute.stops) ? cachedRoute.stops : []);
+      setActiveStepIndex(0);
+      setOffRoute(false);
+    } else {
+      clearLocalRouteState();
+      setDestination("");
+      setStops([]);
+    }
     setNavMode(false);
-    setDestination("");
-    setStops([]);
-    setRouteStatus(`Selected ${item.fleetNo} / ${item.reg}`);
+    setRouteStatus(cachedRoute ? `Restored route for ${item.fleetNo} / ${item.reg}` : `Selected ${item.fleetNo} / ${item.reg}`);
     setLastAction(`Vehicle changed to ${item.fleetNo} / ${item.reg}`);
     setVehicleSelectorOpen(false);
 
@@ -349,6 +368,9 @@ export default function DriverView({ selectedFleet }) {
       fleetNo: activeVehicle.fleetNo,
       reg: activeVehicle.reg,
       operator: activeVehicle.operator,
+      category: activeVehicle.category || activeVehicle.operator,
+      company: vehicleCompany(activeVehicle),
+      vehicleKey: vehicleScopeKey(activeVehicle),
       depot: activeVehicle.depot,
       lat: coords.latitude,
       lng: coords.longitude,
@@ -385,6 +407,9 @@ export default function DriverView({ selectedFleet }) {
     try {
       if ("wakeLock" in navigator && !wakeLockRef.current) {
         wakeLockRef.current = await navigator.wakeLock.request("screen");
+        wakeLockRef.current.addEventListener?.("release", () => {
+          wakeLockRef.current = null;
+        });
       }
     } catch (error) {
       console.warn("Wake lock unavailable", error);
@@ -470,6 +495,10 @@ export default function DriverView({ selectedFleet }) {
         ...route,
         fleetNo: activeVehicle.fleetNo,
         reg: activeVehicle.reg,
+        operator: activeVehicle.operator,
+        category: activeVehicle.category || activeVehicle.operator,
+        company: vehicleCompany(activeVehicle),
+        vehicleKey: vehicleScopeKey(activeVehicle),
         destination,
         waypoint: stops.join(" → "),
         stops,
@@ -514,6 +543,9 @@ export default function DriverView({ selectedFleet }) {
       fleetNo: activeVehicle.fleetNo,
       reg: activeVehicle.reg,
       operator: activeVehicle.operator,
+      category: activeVehicle.category || activeVehicle.operator,
+      company: vehicleCompany(activeVehicle),
+      vehicleKey: vehicleScopeKey(activeVehicle),
       depot: activeVehicle.depot,
       updatedAt: new Date().toISOString(),
     };
@@ -567,6 +599,16 @@ export default function DriverView({ selectedFleet }) {
       if (wakeLockRef.current) wakeLockRef.current.release?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!navMode) return undefined;
+    requestWakeLock();
+    const restoreWakeLock = () => {
+      if (document.visibilityState === "visible") requestWakeLock();
+    };
+    document.addEventListener("visibilitychange", restoreWakeLock);
+    return () => document.removeEventListener("visibilitychange", restoreWakeLock);
+  }, [navMode]);
 
   useEffect(() => {
     if (!lastPosition?.lat || !lastPosition?.lng) return undefined;
@@ -647,6 +689,9 @@ export default function DriverView({ selectedFleet }) {
         fleetNo: activeVehicle.fleetNo,
         reg: activeVehicle.reg,
         operator: activeVehicle.operator,
+        category: activeVehicle.category || activeVehicle.operator,
+        company: vehicleCompany(activeVehicle),
+        vehicleKey: vehicleScopeKey(activeVehicle),
         depot: activeVehicle.depot,
         source: 'driver-reroute',
         originalRouteId: routeSummary.id || routeSummary.updatedAt,
@@ -704,7 +749,7 @@ export default function DriverView({ selectedFleet }) {
     let cancelled = false;
 
     const loadActiveRoute = () => {
-      fetch(`/api/routes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`)
+      fetch(`/api/routes?${vehicleLookupParams(vehicle)}`)
         .then((res) => res.json())
         .then((data) => {
           if (cancelled || !data?.ok || !data.route) return;
@@ -715,6 +760,7 @@ export default function DriverView({ selectedFleet }) {
           const routeChanged = !routeSummary || incomingStamp !== currentStamp || incomingRoute.destination !== routeSummary.destination;
 
           if (routeChanged) {
+            routeCacheRef.current[vehicleScopeKey(vehicle)] = incomingRoute;
             setRouteSummary(incomingRoute);
             setDestination(incomingRoute.routeEndLabel || incomingRoute.destination || '');
             setStops(Array.isArray(incomingRoute.stops) ? incomingRoute.stops : []);
@@ -732,14 +778,14 @@ export default function DriverView({ selectedFleet }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [vehicleSelected, vehicle.fleetNo, routeSummary]);
+  }, [vehicleSelected, vehicle, routeSummary]);
 
   useEffect(() => {
     if (!vehicleSelected) return undefined;
     let cancelled = false;
 
     const loadRoutePush = () => {
-      fetch(`/api/route-pushes?vehicle=${encodeURIComponent(vehicle.fleetNo)}`)
+      fetch(`/api/route-pushes?${vehicleLookupParams(vehicle)}`)
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {
@@ -755,14 +801,14 @@ export default function DriverView({ selectedFleet }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [vehicleSelected, vehicle.fleetNo]);
+  }, [vehicleSelected, vehicle]);
 
   useEffect(() => {
     if (!vehicleSelected) return undefined;
     let cancelled = false;
 
     const loadRequests = () => {
-      fetch(`/api/requests?vehicle=${encodeURIComponent(vehicle.fleetNo)}`)
+      fetch(`/api/requests?${vehicleLookupParams(vehicle)}`)
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {
@@ -782,7 +828,7 @@ export default function DriverView({ selectedFleet }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [vehicleSelected, vehicle.fleetNo]);
+  }, [vehicleSelected, vehicle]);
 
   if (!driverProfile) {
     return (
@@ -862,11 +908,12 @@ export default function DriverView({ selectedFleet }) {
             height="calc(100vh - 190px)"
             fleetNo={vehicle.fleetNo}
             reg={vehicle.reg}
+            vehicle={vehicle}
             liveTracking
             followCoach
             navigationMode
             fitRoute={false}
-            routeOverride={routeSummary}
+            routeOverride={routeSummary ? { ...routeSummary, showDiagnostics: isDeveloperDriver } : routeSummary}
           />
 
           <div className="satnav-speed-panel">
@@ -984,6 +1031,7 @@ export default function DriverView({ selectedFleet }) {
         {!lastPosition?.lat && <small>Routes can still be built from the selected coach depot while the phone gets a GPS lock.</small>}
       </section>
 
+      {isDeveloperDriver && (
       <section className="driver-tomtom-status-card">
         <strong>TomTom traffic</strong>
         <span>{tomTomStatus.status || 'checking'}</span>
@@ -991,6 +1039,7 @@ export default function DriverView({ selectedFleet }) {
         <small>{tomTomStatus.sampledPoints || 0} samples · {tomTomStatus.returnedFlows || 0} flow replies</small>
         {trafficFlow?.currentSpeed != null && <small>Flow {Math.round(Number(trafficFlow.currentSpeed))} mph · free {Math.round(Number(trafficFlow.freeFlowSpeed || trafficFlow.currentSpeed))} mph</small>}
       </section>
+      )}
 
       {pendingRoutePush && (
         <section className="driver-route-update-banner">
@@ -1065,10 +1114,11 @@ export default function DriverView({ selectedFleet }) {
             height="calc(100vh - 285px)"
             fleetNo={vehicle.fleetNo}
             reg={vehicle.reg}
+            vehicle={vehicle}
             liveTracking
             followCoach
             fitRoute={false}
-            routeOverride={routeSummary}
+            routeOverride={routeSummary ? { ...routeSummary, showDiagnostics: isDeveloperDriver } : routeSummary}
           />
         </section>
 

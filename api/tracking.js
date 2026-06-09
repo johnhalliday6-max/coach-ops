@@ -1,11 +1,8 @@
 import { hasSupabase, supabaseFetch } from './lib/storage.js'
+import { bodyVehicleScope, cleanVehiclePart, legacyVehicleKeys, parseScopedVehicleKey, requestVehicleScope, vehicleCompany } from './lib/vehicleIdentity.js'
 
 const store = globalThis.__coachOpsTrackingStore || new Map()
 globalThis.__coachOpsTrackingStore = store
-
-function cleanVehicleId(value) {
-  return String(value || '').trim().toUpperCase()
-}
 
 function memoryVehicles() {
   return Array.from(store.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
@@ -16,7 +13,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'POST') {
       const body = req.body || {}
-      const vehicleId = cleanVehicleId(body.fleetNo || body.vehicleId || body.reg)
+      const vehicleId = bodyVehicleScope(body)
 
       if (!vehicleId) return res.status(400).json({ ok: false, error: 'Missing vehicle id' })
 
@@ -27,9 +24,12 @@ export default async function handler(req, res) {
       }
 
       const record = {
-        fleetNo: vehicleId,
-        reg: body.reg || vehicleId,
-        operator: body.operator || 'Esk Valley',
+        vehicleKey: vehicleId,
+        fleetNo: cleanVehiclePart(body.fleetNo || body.vehicleId || body.reg),
+        reg: body.reg || body.fleetNo || body.vehicleId,
+        operator: body.operator || body.company || body.category || 'Esk Valley',
+        category: body.category || body.company || body.operator || 'Esk Valley',
+        company: body.company || body.category || body.operator || vehicleCompany(body),
         depot: body.depot || 'Whitby',
         lat,
         lng,
@@ -54,7 +54,13 @@ export default async function handler(req, res) {
             updated_at: record.updatedAt,
           }
 
-          const existing = await supabaseFetch(`vehicles?fleet_no=eq.${encodeURIComponent(vehicleId)}&select=id&order=updated_at.desc&limit=1`)
+          let existing = await supabaseFetch(`vehicles?fleet_no=eq.${encodeURIComponent(vehicleId)}&select=id&order=updated_at.desc&limit=1`)
+          if ((!Array.isArray(existing) || !existing[0]?.id)) {
+            for (const legacyKey of legacyVehicleKeys(body)) {
+              existing = await supabaseFetch(`vehicles?fleet_no=eq.${encodeURIComponent(legacyKey)}&select=id&order=updated_at.desc&limit=1`)
+              if (Array.isArray(existing) && existing[0]?.id) break
+            }
+          }
 
           if (Array.isArray(existing) && existing[0]?.id) {
             await supabaseFetch(`vehicles?id=eq.${existing[0].id}`, {
@@ -76,18 +82,22 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      const vehicleId = cleanVehicleId(req.query?.vehicle)
+      const vehicleId = requestVehicleScope(req.query)
+      const fallbackKeys = [cleanVehiclePart(req.query?.vehicle), cleanVehiclePart(req.query?.reg)].filter(Boolean)
 
       if (hasSupabase()) {
         try {
-          const rows = await supabaseFetch(
-            vehicleId
-              ? `vehicles?fleet_no=eq.${encodeURIComponent(vehicleId)}&order=updated_at.desc&limit=1`
-              : 'vehicles?order=updated_at.desc&limit=50',
-          )
+          let rows = await supabaseFetch(vehicleId ? `vehicles?fleet_no=eq.${encodeURIComponent(vehicleId)}&order=updated_at.desc&limit=1` : 'vehicles?order=updated_at.desc&limit=50')
+          if (vehicleId && (!Array.isArray(rows) || !rows.length)) {
+            for (const legacyKey of fallbackKeys) {
+              rows = await supabaseFetch(`vehicles?fleet_no=eq.${encodeURIComponent(legacyKey)}&order=updated_at.desc&limit=1`)
+              if (Array.isArray(rows) && rows.length) break
+            }
+          }
           const vehicles = (Array.isArray(rows) ? rows : []).map((row) => ({
-            fleetNo: row.fleet_no,
-            reg: row.reg || row.fleet_no,
+            vehicleKey: cleanVehiclePart(row.fleet_no),
+            fleetNo: parseScopedVehicleKey(row.fleet_no).fleetNo,
+            reg: row.reg || parseScopedVehicleKey(row.fleet_no).reg || parseScopedVehicleKey(row.fleet_no).fleetNo,
             operator: 'Esk Valley',
             depot: 'Whitby',
             lat: row.lat,
@@ -104,7 +114,10 @@ export default async function handler(req, res) {
       }
 
       const vehicles = memoryVehicles()
-      if (vehicleId) return res.status(200).json({ ok: true, vehicle: store.get(vehicleId) || null, vehicles })
+      if (vehicleId) {
+        const vehicle = store.get(vehicleId) || fallbackKeys.map((key) => store.get(key)).find(Boolean) || null
+        return res.status(200).json({ ok: true, vehicle, vehicles })
+      }
       return res.status(200).json({ ok: true, vehicles })
     }
 
