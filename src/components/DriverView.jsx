@@ -598,6 +598,76 @@ export default function DriverView({ selectedFleet }) {
     };
   }, [lastPosition?.lat, lastPosition?.lng, routeSummary?.updatedAt]);
 
+
+  const rerouteFromCurrentPosition = async () => {
+    const activeVehicle = currentVehicleRef.current || vehicle;
+    const current = lastPosition?.lat && lastPosition?.lng
+      ? { lat: Number(lastPosition.lat), lng: Number(lastPosition.lng), label: 'Current GPS position' }
+      : null;
+    if (!current || !routeSummary?.end?.lat || !routeSummary?.end?.lng) {
+      setRouteStatus('Off route - waiting for live GPS before recalculating');
+      return;
+    }
+
+    const remainingPoints = [
+      current,
+      {
+        lat: Number(routeSummary.end.lat),
+        lng: Number(routeSummary.end.lng),
+        label: routeSummary.routeEndLabel || routeSummary.destination || 'Destination',
+      },
+    ];
+
+    try {
+      setRouteStatus('Off route - recalculating from current position...');
+      const routeResponse = await fetch('/api/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          points: remainingPoints,
+          destination: routeSummary.routeEndLabel || routeSummary.destination || 'Destination',
+          height: activeVehicle.height || 4.3,
+          width: activeVehicle.width || 2.55,
+          length: activeVehicle.length || 13,
+          weight: activeVehicle.weight || 18,
+        }),
+      });
+      const routeData = await routeResponse.json();
+      if (!routeData?.ok || !routeData.route) throw new Error(routeData?.error || 'Reroute failed');
+
+      const rerouted = {
+        ...routeData.route,
+        fleetNo: activeVehicle.fleetNo,
+        reg: activeVehicle.reg,
+        operator: activeVehicle.operator,
+        depot: activeVehicle.depot,
+        source: 'driver-reroute',
+        originalRouteId: routeSummary.id || routeSummary.updatedAt,
+        routeNumber: routeSummary.routeNumber,
+        routeName: routeSummary.routeName,
+        destination: routeSummary.destination,
+        routeEndLabel: routeSummary.routeEndLabel || routeSummary.destination,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const saveResponse = await fetch('/api/routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rerouted),
+      });
+      const saveData = await saveResponse.json().catch(() => null);
+      if (!saveResponse.ok || !saveData?.ok) throw new Error(saveData?.error || 'Could not save reroute');
+
+      setRouteSummary(saveData.route || rerouted);
+      setActiveStepIndex(0);
+      setOffRoute(false);
+      setRouteStatus('Rerouted from current position');
+    } catch (error) {
+      console.error(error);
+      setRouteStatus('Reroute failed - continue to next safe road and retry');
+    }
+  };
+
   useEffect(() => {
     if (!lastPosition || !routeSummary) return;
 
@@ -609,16 +679,15 @@ export default function DriverView({ selectedFleet }) {
     const isOffRoute = routeDistance > 150;
     setOffRoute(isOffRoute);
 
-    if (isOffRoute && !rerouteLock.current && destination.trim()) {
+    if (isOffRoute && !rerouteLock.current && hasRouteGeometry(routeSummary)) {
       rerouteLock.current = true;
-      setRouteStatus('Off route - recalculating...');
       window.setTimeout(() => {
-        planRoute().finally(() => {
+        rerouteFromCurrentPosition().finally(() => {
           window.setTimeout(() => {
             rerouteLock.current = false;
           }, 30000);
         });
-      }, 500);
+      }, 800);
     }
   }, [lastPosition, routeSummary, destination]);
 
@@ -779,7 +848,7 @@ export default function DriverView({ selectedFleet }) {
           <div className="satnav-eta-strip">
             <span>ETA <strong>{etaFromMinutes(remainingNav.minutes)}</strong></span>
             <span>Remaining <strong>{remainingNav.miles || "--"} mi</strong></span>
-            <span>Engine <strong>{routeSummary.engine || "route"}</strong></span>
+            <span>Mode <strong>Coach</strong></span>
           </div>
 
           <RouteMap

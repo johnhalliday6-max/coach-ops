@@ -320,7 +320,7 @@ export default function RouteMap({
   }, [navigationMode, plannedRoute?.updatedAt]);
 
   const visibleRoute = routeOverride || plannedRoute;
-  const liveVehicle = displayVehicle || trackedVehicle;
+  const liveVehicle = navigationMode ? trackedVehicle : (displayVehicle || trackedVehicle);
   const heading = Number(liveVehicle?.heading || 0);
   const coachIcon = useMemo(
     () =>
@@ -365,7 +365,7 @@ export default function RouteMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />
+      {!navigationMode && <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />}
 
       <FitMapToRoute
         positions={activeRouteLine}
@@ -456,14 +456,14 @@ export default function RouteMap({
       </button>
     )}
     {navigationMode && autoFollow && (
-      <div className="map-follow-badge">FOLLOW</div>
+      <div className="map-follow-badge">LIVE FOLLOW</div>
     )}
     {navigationMode && (
       <div className="map-traffic-speed-badge">
         <span>TRAFFIC</span>
         <strong>{trafficState.label}</strong>
-        <small>{roadSpeed != null ? `${roadSpeed} mph` : trafficState.detail}</small>
-        {freeFlowSpeed != null && <small>free {freeFlowSpeed} mph</small>}
+        <small>{roadSpeed != null ? `flow ${roadSpeed} mph` : trafficState.detail}</small>
+        {freeFlowSpeed != null && <small>free flow {freeFlowSpeed}</small>}
       </div>
     )}
     </div>

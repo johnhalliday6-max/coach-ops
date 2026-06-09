@@ -1637,7 +1637,7 @@ body {
 .map-follow-badge {
   position: absolute;
   right: 14px;
-  bottom: 86px;
+  top: 148px;
   z-index: 1000;
   border-radius: 999px;
   padding: 9px 12px;
@@ -1899,7 +1899,7 @@ body {
 .map-traffic-speed-badge {
   position: absolute;
   right: 12px;
-  bottom: 74px;
+  bottom: 138px;
   z-index: 900;
   background: rgba(6,16,29,0.92);
   color: white;
@@ -1910,6 +1910,7 @@ body {
   gap: 2px;
   text-align: center;
   box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+  min-width: 104px;
 }
 
 .map-traffic-speed-badge span,
@@ -2706,4 +2707,29 @@ body {
   .driver-current-vehicle-card summary {
     padding: 10px 0;
   }
+}
+
+
+/* V3.21 sat-nav usability fixes */
+.map-follow-badge {
+  bottom: auto !important;
+  top: 148px !important;
+  right: 12px !important;
+  z-index: 1200;
+}
+.map-traffic-speed-badge {
+  bottom: 136px !important;
+  right: 12px !important;
+  min-width: 104px;
+  z-index: 1100;
+}
+.map-traffic-speed-badge small {
+  display: block;
+  line-height: 1.1;
+}
+.satnav-speed-panel {
+  bottom: 96px !important;
+}
+.satnav-actions {
+  bottom: 18px !important;
 }
