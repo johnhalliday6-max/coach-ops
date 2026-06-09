@@ -2656,3 +2656,54 @@ body {
     word-break: break-word;
   }
 }
+
+/* V3.19 GPS restore + phone vehicle selector cleanup */
+.driver-only-header span.gps-waiting {
+  background: #f59e0b;
+  color: #111827;
+}
+
+.driver-only-header span.gps-live {
+  background: #20d86b;
+  color: #06101d;
+}
+
+.driver-gps-status-card {
+  background: #102238;
+  border: 1px solid #24405f;
+  color: white;
+  border-radius: 18px;
+  padding: 12px 16px;
+  margin: -2px 0 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.driver-gps-status-card span {
+  color: #c6d5e7;
+  font-weight: 800;
+}
+
+.driver-gps-status-card small {
+  color: #8fa5bd;
+}
+
+.driver-change-vehicle-panel[open] {
+  max-height: 58vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.driver-change-vehicle-panel .vehicle-select.active {
+  outline: 2px solid #20d86b;
+}
+
+@media (max-width: 700px) {
+  .driver-change-vehicle-panel[open] {
+    max-height: 52vh;
+  }
+
+  .driver-current-vehicle-card summary {
+    padding: 10px 0;
+  }
+}

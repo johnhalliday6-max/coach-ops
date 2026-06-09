@@ -150,6 +150,19 @@ function hasRouteGeometry(route) {
   return Array.isArray(route?.geometry) && route.geometry.length > 1;
 }
 
+const DEPOT_FALLBACK_POSITIONS = {
+  Whitby: { lat: 54.47587, lng: -0.62705, label: 'Whitby depot fallback' },
+  Carnaby: { lat: 54.08243, lng: -0.25321, label: 'Carnaby depot fallback' },
+  'Stockton-on-Tees': { lat: 54.56848, lng: -1.31870, label: 'Stockton depot fallback' },
+  'Leeming Bar': { lat: 54.30556, lng: -1.55977, label: 'Leeming Bar depot fallback' },
+  Cleckheaton: { lat: 53.72454, lng: -1.71203, label: 'Cleckheaton depot fallback' },
+};
+
+function fallbackPositionForVehicle(vehicle) {
+  const depot = String(vehicle?.depot || '').trim();
+  return DEPOT_FALLBACK_POSITIONS[depot] || DEPOT_FALLBACK_POSITIONS.Whitby;
+}
+
 export default function DriverView({ selectedFleet }) {
   // Never default every driver session to the CGG test coach.
   // The selected/phone vehicle must be the source of truth so 200+ coaches
@@ -173,7 +186,9 @@ export default function DriverView({ selectedFleet }) {
   const [lastAction, setLastAction] = useState("Select vehicle to begin");
   const [tracking, setTracking] = useState(false);
   const [trackingError, setTrackingError] = useState("");
+  const [gpsStatus, setGpsStatus] = useState('Waiting for phone GPS');
   const [lastPosition, setLastPosition] = useState(null);
+  const [vehicleSelectorOpen, setVehicleSelectorOpen] = useState(false);
   const [destination, setDestination] = useState("");
   const [stopInput, setStopInput] = useState("");
   const [stops, setStops] = useState([]);
@@ -285,6 +300,7 @@ export default function DriverView({ selectedFleet }) {
     setDestination("");
     setStops([]);
     setRouteStatus(`Logged in. Vehicle ${assignedVehicle.fleetNo} assigned.`);
+    setGpsStatus("Starting phone GPS...");
     setLastAction(`Driver logged in · ${assignedVehicle.fleetNo} / ${assignedVehicle.reg}`);
     window.setTimeout(startTracking, 0);
   };
@@ -300,6 +316,7 @@ export default function DriverView({ selectedFleet }) {
     setStops([]);
     setRouteStatus(`Selected ${item.fleetNo} / ${item.reg}`);
     setLastAction(`Vehicle changed to ${item.fleetNo} / ${item.reg}`);
+    setVehicleSelectorOpen(false);
 
     // Immediately republish the last GPS fix under the new selected coach.
     // Otherwise the office keeps seeing the phone under the old coach until
@@ -340,10 +357,14 @@ export default function DriverView({ selectedFleet }) {
 
     if (payload.accuracy && payload.accuracy > 80) {
       setLastAction(`GPS accuracy poor: ±${Math.round(payload.accuracy)}m`);
+      setGpsStatus(`GPS found but accuracy poor: ±${Math.round(payload.accuracy)}m`);
+      setLastPosition({ ...payload, updatedAt: new Date().toISOString() });
       return;
     }
 
-    setLastPosition({ ...payload, updatedAt: new Date().toISOString() });
+    const gpsStamp = new Date().toISOString();
+    setLastPosition({ ...payload, updatedAt: gpsStamp });
+    setGpsStatus(`GPS live · accuracy ±${Math.round(Number(payload.accuracy || 0)) || '?'}m`);
 
     try {
       await fetch("/api/tracking", {
@@ -370,7 +391,9 @@ export default function DriverView({ selectedFleet }) {
 
   const startTracking = () => {
     if (!navigator.geolocation) {
+      setTracking(false);
       setTrackingError("This phone/browser does not support GPS tracking");
+      setGpsStatus('GPS unsupported on this browser');
       return;
     }
 
@@ -379,6 +402,7 @@ export default function DriverView({ selectedFleet }) {
     requestWakeLock();
     setTrackingError("");
     setTracking(true);
+    setGpsStatus('Requesting phone GPS permission...');
     setLastAction("Requesting phone GPS permission...");
 
     watchId.current = navigator.geolocation.watchPosition(
@@ -386,9 +410,14 @@ export default function DriverView({ selectedFleet }) {
       (error) => {
         setTracking(false);
         setTrackingError(error.message || "Location permission denied");
-        setLastAction("GPS tracking failed");
+        setGpsStatus(`GPS error: ${error.message || 'permission denied'}`);
+        setLastAction("GPS tracking failed - using fallback for route building");
+        if (watchId.current != null) {
+          navigator.geolocation.clearWatch(watchId.current);
+          watchId.current = null;
+        }
       },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
     );
   };
 
@@ -400,17 +429,17 @@ export default function DriverView({ selectedFleet }) {
   };
 
   const planRoute = async () => {
-    if (!lastPosition?.lat || !lastPosition?.lng) {
-      setRouteStatus("Waiting for GPS fix before building route");
-      return;
-    }
+    const fallback = fallbackPositionForVehicle(vehicle);
+    const startPosition = lastPosition?.lat && lastPosition?.lng
+      ? { lat: lastPosition.lat, lng: lastPosition.lng, label: 'live GPS' }
+      : { ...fallback, fallback: true };
 
     if (!destination.trim()) {
       setRouteStatus("Enter a destination first");
       return;
     }
 
-    setRouteStatus("Building route from your live GPS...");
+    setRouteStatus(startPosition.fallback ? `Building route from ${startPosition.label} while GPS locks...` : "Building route from your live GPS...");
     clearLocalRouteState();
 
     try {
@@ -418,8 +447,8 @@ export default function DriverView({ selectedFleet }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startLat: lastPosition.lat,
-          startLng: lastPosition.lng,
+          startLat: startPosition.lat,
+          startLng: startPosition.lng,
           destination,
           stops,
         }),
@@ -521,6 +550,12 @@ export default function DriverView({ selectedFleet }) {
     await postOfficeRequest("ROUTE_DECLINED", "Driver declined office route update");
     setPendingRoutePush(null);
   };
+
+  useEffect(() => {
+    if (driverProfile && vehicleSelected) {
+      startTracking();
+    }
+  }, [driverProfile?.employeeId, vehicleSelected]);
 
   useEffect(() => {
     return () => {
@@ -824,7 +859,7 @@ export default function DriverView({ selectedFleet }) {
           <h1>Coach Ops Driver</h1>
           <p>Logged in · {vehicle.fleetNo} · {vehicle.reg}</p>
         </div>
-        <span>{tracking ? "GPS LIVE" : "GPS WAITING"}</span>
+        <span className={tracking && lastPosition?.lat ? "gps-live" : "gps-waiting"}>{tracking && lastPosition?.lat ? "GPS LIVE" : "GPS WAITING"}</span>
       </header>
 
       <section className="driver-current-vehicle-card">
@@ -833,7 +868,7 @@ export default function DriverView({ selectedFleet }) {
           <h2>{vehicle.fleetNo} · {vehicle.reg}</h2>
           <p>{vehicle.operator} · {vehicle.depot}</p>
         </div>
-        <details className="driver-change-vehicle-panel">
+        <details className="driver-change-vehicle-panel" open={vehicleSelectorOpen} onToggle={(event) => setVehicleSelectorOpen(event.currentTarget.open)}>
           <summary>Change vehicle</summary>
           <div className="driver-company-tabs">
             {companies.map((company) => (
@@ -861,6 +896,13 @@ export default function DriverView({ selectedFleet }) {
             ))}
           </div>
         </details>
+      </section>
+
+      <section className="driver-gps-status-card">
+        <strong>GPS status</strong>
+        <span>{gpsStatus}</span>
+        {lastPosition?.updatedAt && <small>Last update {new Date(lastPosition.updatedAt).toLocaleTimeString('en-GB')} · {lastPosition.lat?.toFixed?.(5)}, {lastPosition.lng?.toFixed?.(5)}</small>}
+        {!lastPosition?.lat && <small>Routes can still be built from the selected coach depot while the phone gets a GPS lock.</small>}
       </section>
 
       {pendingRoutePush && (
