@@ -273,7 +273,7 @@ export default function RouteMap({
     let cancelled = false;
 
     const loadTracking = () => {
-      fetch(`/api/tracking?vehicle=${encodeURIComponent(fleetNo)}`)
+      fetch(`/api/tracking?vehicle=${encodeURIComponent(fleetNo)}&_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {

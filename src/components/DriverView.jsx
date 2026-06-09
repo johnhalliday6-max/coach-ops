@@ -248,17 +248,18 @@ export default function DriverView({ selectedFleet }) {
   }, [routeSummary, activeStepIndex]);
 
   const postOfficeRequest = async (type, text, source = "driver") => {
+    const activeVehicle = currentVehicleRef.current || vehicle;
     try {
       await fetch("/api/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fleetNo: vehicle.fleetNo,
-          reg: vehicle.reg,
-          operator: vehicle.operator,
-          category: vehicle.category || vehicle.operator,
-          company: vehicle.category || vehicle.operator,
-          depot: vehicle.depot,
+          fleetNo: activeVehicle.fleetNo,
+          reg: activeVehicle.reg,
+          operator: activeVehicle.operator,
+          category: activeVehicle.category || activeVehicle.operator,
+          company: activeVehicle.category || activeVehicle.operator,
+          depot: activeVehicle.depot,
           type,
           message: text,
           source,
@@ -429,7 +430,8 @@ export default function DriverView({ selectedFleet }) {
   };
 
   const planRoute = async () => {
-    const fallback = fallbackPositionForVehicle(vehicle);
+    const activeVehicle = currentVehicleRef.current || vehicle;
+    const fallback = fallbackPositionForVehicle(activeVehicle);
     const startPosition = lastPosition?.lat && lastPosition?.lng
       ? { lat: lastPosition.lat, lng: lastPosition.lng, label: 'live GPS' }
       : { ...fallback, fallback: true };
@@ -465,8 +467,8 @@ export default function DriverView({ selectedFleet }) {
 
       const activeRoutePayload = {
         ...route,
-        fleetNo: vehicle.fleetNo,
-        reg: vehicle.reg,
+        fleetNo: activeVehicle.fleetNo,
+        reg: activeVehicle.reg,
         destination,
         waypoint: stops.join(" → "),
         stops,
@@ -488,7 +490,7 @@ export default function DriverView({ selectedFleet }) {
       setRouteSummary(saveData.route || activeRoutePayload);
       setActiveStepIndex(0);
       setRouteStatus(`Route live: ${route.distanceMiles} miles · approx ${route.durationMinutes} mins`);
-      setLastAction(`Navigation mode active for ${vehicle.fleetNo}`);
+      setLastAction(`Navigation mode active for ${activeVehicle.fleetNo}`);
       setNavMode(true);
       requestWakeLock();
       await postOfficeRequest(
@@ -505,12 +507,13 @@ export default function DriverView({ selectedFleet }) {
 
   const applyRouteToDriver = async (route, sourceText = "Route loaded") => {
     if (!route) return;
+    const activeVehicle = currentVehicleRef.current || vehicle;
     const routeForVehicle = {
       ...route,
-      fleetNo: vehicle.fleetNo,
-      reg: vehicle.reg,
-      operator: vehicle.operator,
-      depot: vehicle.depot,
+      fleetNo: activeVehicle.fleetNo,
+      reg: activeVehicle.reg,
+      operator: activeVehicle.operator,
+      depot: activeVehicle.depot,
       updatedAt: new Date().toISOString(),
     };
 

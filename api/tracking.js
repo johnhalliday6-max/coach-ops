@@ -12,6 +12,7 @@ function memoryVehicles() {
 }
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, max-age=0')
   try {
     if (req.method === 'POST') {
       const body = req.body || {}

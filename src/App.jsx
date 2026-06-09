@@ -335,14 +335,17 @@ function App() {
         // If the all-list missed it, check the selected coach directly. Do not
         // clear the map when the direct lookup says null; a Vercel/Supabase read
         // can briefly lag and old route must remain until explicit Clear.
-        if (!matchingRoute && selectedVehicleId) {
-          const response = await fetch(`/api/routes?vehicle=${encodeURIComponent(selectedVehicleId)}&_=${stamp}`, {
-            cache: "no-store",
-          });
-          const data = await response.json();
-          if (!cancelled && data?.ok && data.route) {
-            matchingRoute = data.route;
-            cacheRouteForVehicle(data.route, selectedFleet);
+        if (!matchingRoute && selectedKeys.length) {
+          for (const lookupKey of selectedKeys) {
+            const response = await fetch(`/api/routes?vehicle=${encodeURIComponent(lookupKey)}&_=${stamp}`, {
+              cache: "no-store",
+            });
+            const data = await response.json();
+            if (!cancelled && data?.ok && data.route) {
+              matchingRoute = data.route;
+              cacheRouteForVehicle(data.route, selectedFleet);
+              break;
+            }
           }
         }
 
