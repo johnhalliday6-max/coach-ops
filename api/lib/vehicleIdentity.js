@@ -10,6 +10,7 @@ export function vehicleScopeKey(value) {
   const company = cleanVehiclePart(vehicleCompany(value))
   const fleet = cleanVehiclePart(value?.fleetNo || value?.vehicle || value?.vehicleId)
   const reg = cleanVehiclePart(value?.reg)
+  if (!fleet && !reg) return ''
   return [company, fleet, reg].filter(Boolean).join('::')
 }
 
@@ -25,12 +26,15 @@ export function parseScopedVehicleKey(value) {
 export function requestVehicleScope(query = {}) {
   const vehicleKey = cleanVehiclePart(query.vehicleKey)
   if (vehicleKey) return vehicleKey
+  const fleet = cleanVehiclePart(query.vehicle || query.fleetNo || query.vehicleId)
+  const reg = cleanVehiclePart(query.reg)
+  if (!fleet && !reg) return ''
   return vehicleScopeKey({
     company: query.company,
     category: query.category,
     operator: query.operator,
-    fleetNo: query.vehicle || query.fleetNo || query.vehicleId,
-    reg: query.reg,
+    fleetNo: fleet,
+    reg,
   })
 }
 

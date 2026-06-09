@@ -10,6 +10,7 @@ export function vehicleScopeKey(vehicle) {
   const company = normaliseVehiclePart(vehicleCompany(vehicle));
   const fleet = normaliseVehiclePart(vehicle?.fleetNo || vehicle?.vehicle || vehicle?.vehicleId);
   const reg = normaliseVehiclePart(vehicle?.reg);
+  if (!fleet && !reg) return "";
   return [company, fleet, reg].filter(Boolean).join("::");
 }
 
