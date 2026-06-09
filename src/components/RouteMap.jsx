@@ -109,6 +109,28 @@ function ManualMapWatcher({ enabled, onManualMove }) {
   return null;
 }
 
+function ResizeMapWatcher({ watchKey }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const refresh = () => window.setTimeout(() => map.invalidateSize(), 80);
+    refresh();
+
+    const container = map.getContainer();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(refresh) : null;
+    observer?.observe(container);
+    window.addEventListener("resize", refresh);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", refresh);
+    };
+  }, [map, watchKey]);
+
+  return null;
+}
+
+const UK_TRAFFIC_BBOX = "-8.65000,49.85000,1.90000,58.75000";
 
 function trafficRatio(flow) {
   const current = Number(flow?.currentSpeed);
@@ -201,7 +223,7 @@ function LerpVehicle({ target, setDisplayVehicle }) {
 
 
 export default function RouteMap({
-  height = "700px",
+  height = "100%",
   fleetNo = "23031",
   reg = "YJ72 CGG",
   vehicle = null,
@@ -263,6 +285,8 @@ export default function RouteMap({
       }
     } else if (vehiclePoint) {
       url = `/api/tomtom-traffic?lat=${vehiclePoint[0]}&lng=${vehiclePoint[1]}&span=0.5`;
+    } else if (!navigationMode) {
+      url = `/api/tomtom-traffic?bbox=${encodeURIComponent(UK_TRAFFIC_BBOX)}`;
     }
 
     if (!url) return undefined;
@@ -393,6 +417,7 @@ export default function RouteMap({
         enabled={fitRoute && !followCoach && !navigationMode}
       />
       <ManualMapWatcher enabled={navigationMode} onManualMove={() => setAutoFollow(false)} />
+      <ResizeMapWatcher watchKey={`${height}-${navigationMode}-${routeId}`} />
       <FollowCoach
         position={coachPosition || mapCenter}
         enabled={(followCoach || navigationMode) && hasLiveVehicle}

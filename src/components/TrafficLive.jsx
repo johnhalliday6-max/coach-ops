@@ -6,6 +6,8 @@ function delayText(seconds) {
   return `${Math.round(n / 60)} min delay`;
 }
 
+const UK_TRAFFIC_BBOX = '-8.65000,49.85000,1.90000,58.75000';
+
 export default function TrafficLive({ selectedFleet, activeRoute }) {
   const [traffic, setTraffic] = useState({ loading: true, incidents: [], flow: null, error: '' });
 
@@ -28,7 +30,7 @@ export default function TrafficLive({ selectedFleet, activeRoute }) {
           return `/api/tomtom-traffic?bbox=${encodeURIComponent(bbox)}`;
         }
       }
-      return `/api/tomtom-traffic?lat=54.47587&lng=-0.62705&span=0.7`;
+      return `/api/tomtom-traffic?bbox=${encodeURIComponent(UK_TRAFFIC_BBOX)}`;
     };
 
     const loadTraffic = () => {
