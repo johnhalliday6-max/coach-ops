@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import logo from "./assets/goahead-logo.png";
 import { fleetData } from "./data/fleetData";
-import { coachParking } from "./data/coachParking";
+import { goAheadCoachParking } from "./data/goAheadCoachParking";
 import { serviceAreas } from "./data/serviceAreas";
 import { depots } from "./data/depots";
 import RouteMap from "./components/RouteMap";
@@ -777,24 +777,26 @@ function App() {
         {activePage === "parking" && (
           <section className="page">
             <h2>Coach Parking</h2>
+            <p>{goAheadCoachParking.length} Go-Ahead depot parking locations loaded.</p>
 
             <div className="parking-grid">
-              {coachParking.map((place) => (
+              {goAheadCoachParking.map((place) => (
                 <div className="parking-card" key={place.id}>
                   <h3>{place.name}</h3>
                   <p>
-                    <strong>Type:</strong> {place.type}
+                    <strong>Address:</strong> {place.address || "Not listed"}
                   </p>
                   <p>
-                    <strong>Area:</strong> {place.area}
+                    <strong>Parking:</strong> {place.parkingAvailability || "Check with depot"}
                   </p>
                   <p>
-                    <strong>Booking:</strong> {place.booking}
+                    <strong>Facilities:</strong> {place.facilities || "Not listed"}
                   </p>
                   <p>
-                    <strong>Status:</strong> {place.status}
+                    <strong>Booking:</strong> {place.bookingContact || "Contact depot"}
                   </p>
-                  <p>{place.notes}</p>
+                  {place.instructions && <p>{place.instructions}</p>}
+                  {place.accessLocation && <a href={place.accessLocation} target="_blank" rel="noreferrer">Access location</a>}
                 </div>
               ))}
             </div>
