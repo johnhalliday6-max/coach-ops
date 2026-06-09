@@ -5,7 +5,21 @@ const store = globalThis.__coachOpsTrackingStore || new Map()
 globalThis.__coachOpsTrackingStore = store
 
 function memoryVehicles() {
-  return Array.from(store.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+  return latestVehicles(Array.from(store.values()))
+}
+
+function latestVehicles(vehicles) {
+  const latest = new Map()
+  vehicles.forEach((vehicle) => {
+    const keys = legacyVehicleKeys(vehicle)
+    const key = keys[0] || cleanVehiclePart(vehicle?.vehicleKey)
+    if (!key) return
+    const current = latest.get(key)
+    if (!current || String(vehicle?.updatedAt || '').localeCompare(String(current?.updatedAt || '')) > 0) {
+      latest.set(key, vehicle)
+    }
+  })
+  return Array.from(latest.values()).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
 }
 
 export default async function handler(req, res) {
@@ -94,18 +108,23 @@ export default async function handler(req, res) {
               if (Array.isArray(rows) && rows.length) break
             }
           }
-          const vehicles = (Array.isArray(rows) ? rows : []).map((row) => ({
-            vehicleKey: cleanVehiclePart(row.fleet_no),
-            fleetNo: parseScopedVehicleKey(row.fleet_no).fleetNo,
-            reg: row.reg || parseScopedVehicleKey(row.fleet_no).reg || parseScopedVehicleKey(row.fleet_no).fleetNo,
-            operator: 'Esk Valley',
-            depot: 'Whitby',
-            lat: row.lat,
-            lng: row.lng,
-            speedMps: row.speed == null ? null : Number(row.speed) / 2.23694,
-            speedMph: row.speed,
-            source: 'supabase',
-            updatedAt: row.updated_at,
+          const vehicles = latestVehicles((Array.isArray(rows) ? rows : []).map((row) => {
+            const parsed = parseScopedVehicleKey(row.fleet_no)
+            return {
+              vehicleKey: cleanVehiclePart(row.fleet_no),
+              fleetNo: parsed.fleetNo,
+              reg: row.reg || parsed.reg || parsed.fleetNo,
+              operator: parsed.company || 'Unknown',
+              category: parsed.company || 'Unknown',
+              company: parsed.company || 'Unknown',
+              depot: 'Whitby',
+              lat: row.lat,
+              lng: row.lng,
+              speedMps: row.speed == null ? null : Number(row.speed) / 2.23694,
+              speedMph: row.speed,
+              source: 'supabase',
+              updatedAt: row.updated_at,
+            }
           }))
           return res.status(200).json({ ok: true, vehicle: vehicleId ? vehicles[0] || null : null, vehicles })
         } catch (error) {

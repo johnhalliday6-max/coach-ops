@@ -131,8 +131,17 @@ function App() {
       normaliseVehiclePart(route?.vehicle),
       normaliseVehiclePart(route?.vehicleKey),
     ].filter(Boolean));
-    keys.forEach((key) => { next[key] = route; });
+    keys.forEach((key) => {
+      if (isNewerRoute(route, next[key])) next[key] = route;
+    });
     saveOfficeRouteCache(next);
+  };
+
+  const routeTime = (route) => new Date(route?.updatedAt || route?.createdAt || 0).getTime() || 0;
+
+  const isNewerRoute = (candidate, current) => {
+    if (!current) return true;
+    return routeTime(candidate) >= routeTime(current);
   };
 
   const isRecentTracking = (vehicle) => {
@@ -143,7 +152,10 @@ function App() {
 
   const getLiveVehicle = (vehicle) => {
     const keys = vehicleRouteKeys(vehicle);
-    return liveVehicles.find((live) => vehicleRouteKeys(live).some((key) => keys.includes(key)));
+    return liveVehicles
+      .filter((live) => vehicleRouteKeys(live).some((key) => keys.includes(key)))
+      .sort((a, b) => new Date(b?.updatedAt || 0).getTime() - new Date(a?.updatedAt || 0).getTime())
+      .find(isRecentTracking) || null;
   };
 
   const getVehicleRoute = (vehicle, cache) => {
@@ -327,7 +339,9 @@ function App() {
           const routeVehicleKey = normaliseVehiclePart(route?.vehicleKey);
           if (routeVehicle) routeKeys.push(routeVehicle);
           if (routeVehicleKey) routeKeys.push(routeVehicleKey);
-          routeKeys.filter(Boolean).forEach((key) => { nextCache[key] = route; });
+          routeKeys.filter(Boolean).forEach((key) => {
+            if (isNewerRoute(route, nextCache[key])) nextCache[key] = route;
+          });
         });
         saveOfficeRouteCache(nextCache);
 
