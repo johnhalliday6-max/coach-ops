@@ -10,6 +10,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { vehicleLookupParams } from "../shared/vehicleIdentity";
+import { goAheadCoachParking } from "../data/goAheadCoachParking";
 
 const stopIcon = L.divIcon({
   className: "map-emoji-marker stop-marker",
@@ -37,6 +38,13 @@ const plannedStopIcon = L.divIcon({
   html: "📍",
   iconSize: [34, 34],
   iconAnchor: [17, 17],
+});
+
+const coachParkingIcon = L.divIcon({
+  className: "coach-parking-marker",
+  html: "P",
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
 });
 
 function FitMapToRoute({ routeId, positions, enabled }) {
@@ -430,6 +438,20 @@ export default function RouteMap({
           <Popup><strong>Destination</strong><br />{visibleRoute.destination}</Popup>
         </Marker>
       )}
+
+      {!navigationMode && goAheadCoachParking.map((place) => (
+        <Marker key={`coach-parking-${place.id}`} position={[place.lat, place.lng]} icon={coachParkingIcon}>
+          <Popup>
+            <strong>{place.name}</strong><br />
+            {place.address && <><span>{place.address}</span><br /></>}
+            {place.parkingAvailability && <><span>Parking: {place.parkingAvailability}</span><br /></>}
+            {place.facilities && <><span>Facilities: {place.facilities}</span><br /></>}
+            {place.instructions && <><span>{place.instructions}</span><br /></>}
+            {place.bookingContact && <><small>Booking: {place.bookingContact}</small><br /></>}
+            {place.accessLocation && <a href={place.accessLocation} target="_blank" rel="noreferrer">Access location</a>}
+          </Popup>
+        </Marker>
+      ))}
 
       {hasLiveVehicle && (
       <Marker position={coachPosition} icon={coachIcon}>
