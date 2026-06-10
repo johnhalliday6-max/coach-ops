@@ -88,7 +88,15 @@ function App() {
       return {};
     }
   });
+  const [routeClearTombstones, setRouteClearTombstones] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("coachOpsRouteClearTombstones") || "{}");
+    } catch {
+      return {};
+    }
+  });
   const officeRouteCacheRef = useRef(officeRouteCache);
+  const routeClearTombstonesRef = useRef(routeClearTombstones);
 
   const saveManagedFleet = (nextFleet) => {
     setManagedFleet(nextFleet);
@@ -108,6 +116,16 @@ function App() {
       window.localStorage.setItem("coachOpsOfficeRouteCache", JSON.stringify(nextCache));
     } catch {
       // localStorage can fail in private mode; in-memory cache still works.
+    }
+  };
+
+  const saveRouteClearTombstones = (nextTombstones) => {
+    routeClearTombstonesRef.current = nextTombstones;
+    setRouteClearTombstones(nextTombstones);
+    try {
+      window.localStorage.setItem("coachOpsRouteClearTombstones", JSON.stringify(nextTombstones));
+    } catch {
+      // localStorage can fail in private mode; in-memory tombstones still work.
     }
   };
 
@@ -131,6 +149,12 @@ function App() {
       normaliseVehiclePart(route?.vehicle),
       normaliseVehiclePart(route?.vehicleKey),
     ].filter(Boolean));
+    const routeUpdatedAt = routeTime(route);
+    const wasClearedAfterRoute = [...keys].some((key) => {
+      const clearedAt = Number(routeClearTombstonesRef.current[key] || 0);
+      return clearedAt && clearedAt >= routeUpdatedAt;
+    });
+    if (wasClearedAfterRoute) return;
     keys.forEach((key) => {
       if (isNewerRoute(route, next[key])) next[key] = route;
     });
@@ -159,7 +183,14 @@ function App() {
   };
 
   const getVehicleRoute = (vehicle, cache) => {
-    return vehicleRouteKeys(vehicle).map((key) => cache[key]).find(Boolean) || null;
+    return vehicleRouteKeys(vehicle)
+      .map((key) => {
+        const route = cache[key];
+        if (!route) return null;
+        const clearedAt = Number(routeClearTombstonesRef.current[key] || 0);
+        return clearedAt && clearedAt >= routeTime(route) ? null : route;
+      })
+      .find(Boolean) || null;
   };
 
   const getVehicleOfficeStatus = (vehicle, routeCache = officeRouteCache) => {
@@ -307,7 +338,7 @@ function App() {
       fetch(`/api/tracking?_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
-          if (!cancelled && data?.ok) setLiveVehicles(data.vehicles || []);
+          if (!cancelled && data?.ok) setLiveVehicles((data.vehicles || []).filter(isRecentTracking));
         })
         .catch((err) => console.error("Office tracking fetch failed", err));
     };
@@ -342,6 +373,12 @@ function App() {
           const routeVehicleKey = normaliseVehiclePart(route?.vehicleKey);
           if (routeVehicle) routeKeys.push(routeVehicle);
           if (routeVehicleKey) routeKeys.push(routeVehicleKey);
+          const routeUpdatedAt = routeTime(route);
+          const wasClearedAfterRoute = routeKeys.some((key) => {
+            const clearedAt = Number(routeClearTombstonesRef.current[key] || 0);
+            return clearedAt && clearedAt >= routeUpdatedAt;
+          });
+          if (wasClearedAfterRoute) return;
           routeKeys.filter(Boolean).forEach((key) => {
             if (isNewerRoute(route, nextCache[key])) nextCache[key] = route;
           });
@@ -661,7 +698,13 @@ function App() {
               </div>
 
               <div className="map-panel">
-                <RouteMap vehicle={selectedFleet} fleetNo={selectedFleet.fleetNo} reg={selectedFleet.reg} routeOverride={selectedOfficeRoute} />
+                <RouteMap
+                  vehicle={selectedFleet}
+                  fleetNo={selectedFleet.fleetNo}
+                  reg={selectedFleet.reg}
+                  routeOverride={selectedOfficeRoute}
+                  disableRouteFetch
+                />
               </div>
 
               <div className="tools-panel">
@@ -672,8 +715,14 @@ function App() {
                   }}
                   onRouteCleared={() => {
                     const next = { ...officeRouteCacheRef.current };
-                    vehicleRouteKeys(selectedFleet).forEach((key) => delete next[key]);
+                    const tombstones = { ...routeClearTombstonesRef.current };
+                    const clearedAt = Date.now();
+                    vehicleRouteKeys(selectedFleet).forEach((key) => {
+                      delete next[key];
+                      tombstones[key] = clearedAt;
+                    });
                     saveOfficeRouteCache(next);
+                    saveRouteClearTombstones(tombstones);
                   }}
                 />
               </div>

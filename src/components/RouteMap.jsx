@@ -308,6 +308,7 @@ export default function RouteMap({
   showDefaultRoute = false,
   fitRoute = true,
   routeOverride = null,
+  disableRouteFetch = false,
 }) {
   const [highwaysAlerts, setHighwaysAlerts] = useState([]);
   const [tomTomTraffic, setTomTomTraffic] = useState([]);
@@ -445,6 +446,11 @@ export default function RouteMap({
   }, [lookupVehicle, liveTracking]);
 
   useEffect(() => {
+    if (disableRouteFetch) {
+      setPlannedRoute(null);
+      return undefined;
+    }
+
     let cancelled = false;
 
     const loadRoute = () => {
@@ -465,7 +471,7 @@ export default function RouteMap({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [lookupVehicle]);
+  }, [lookupVehicle, disableRouteFetch]);
 
   useEffect(() => {
     if (navigationMode) setAutoFollow(true);

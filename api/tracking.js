@@ -4,15 +4,25 @@ import { bodyVehicleScope, cleanVehiclePart, legacyVehicleKeys, parseScopedVehic
 const store = globalThis.__coachOpsTrackingStore || new Map()
 globalThis.__coachOpsTrackingStore = store
 
+function isRecentTrackingRecord(vehicle) {
+  const lat = Number(vehicle?.lat)
+  const lng = Number(vehicle?.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !vehicle?.updatedAt) return false
+  const status = cleanVehiclePart(vehicle.status || 'TRACKING')
+  if (status && status !== 'TRACKING') return false
+  const ageMs = Date.now() - new Date(vehicle.updatedAt).getTime()
+  return Number.isFinite(ageMs) && ageMs < 2 * 60 * 1000
+}
+
 function memoryVehicles() {
   return latestVehicles(Array.from(store.values()))
 }
 
 function latestVehicles(vehicles) {
   const latest = new Map()
-  vehicles.forEach((vehicle) => {
+  vehicles.filter(isRecentTrackingRecord).forEach((vehicle) => {
     const keys = legacyVehicleKeys(vehicle)
-    const key = keys[0] || cleanVehiclePart(vehicle?.vehicleKey)
+    const key = cleanVehiclePart(vehicle?.vehicleKey) || keys[0]
     if (!key) return
     const current = latest.get(key)
     if (!current || String(vehicle?.updatedAt || '').localeCompare(String(current?.updatedAt || '')) > 0) {
@@ -45,6 +55,7 @@ export default async function handler(req, res) {
         category: body.category || body.company || body.operator || 'Esk Valley',
         company: body.company || body.category || body.operator || vehicleCompany(body),
         depot: body.depot || 'Whitby',
+        status: 'TRACKING',
         lat,
         lng,
         accuracy: Number(body.accuracy || 0),
@@ -101,10 +112,10 @@ export default async function handler(req, res) {
 
       if (hasSupabase()) {
         try {
-          let rows = await supabaseFetch(vehicleId ? `vehicles?fleet_no=eq.${encodeURIComponent(vehicleId)}&order=updated_at.desc&limit=1` : 'vehicles?order=updated_at.desc&limit=50')
+          let rows = await supabaseFetch(vehicleId ? `vehicles?fleet_no=eq.${encodeURIComponent(vehicleId)}&status=eq.TRACKING&order=updated_at.desc&limit=1` : 'vehicles?status=eq.TRACKING&order=updated_at.desc&limit=50')
           if (vehicleId && (!Array.isArray(rows) || !rows.length)) {
             for (const legacyKey of fallbackKeys) {
-              rows = await supabaseFetch(`vehicles?fleet_no=eq.${encodeURIComponent(legacyKey)}&order=updated_at.desc&limit=1`)
+              rows = await supabaseFetch(`vehicles?fleet_no=eq.${encodeURIComponent(legacyKey)}&status=eq.TRACKING&order=updated_at.desc&limit=1`)
               if (Array.isArray(rows) && rows.length) break
             }
           }
@@ -118,6 +129,7 @@ export default async function handler(req, res) {
               category: parsed.company || 'Unknown',
               company: parsed.company || 'Unknown',
               depot: 'Whitby',
+              status: row.status || 'TRACKING',
               lat: row.lat,
               lng: row.lng,
               speedMps: row.speed == null ? null : Number(row.speed) / 2.23694,
@@ -135,7 +147,7 @@ export default async function handler(req, res) {
       const vehicles = memoryVehicles()
       if (vehicleId) {
         const vehicle = store.get(vehicleId) || fallbackKeys.map((key) => store.get(key)).find(Boolean) || null
-        return res.status(200).json({ ok: true, vehicle, vehicles })
+        return res.status(200).json({ ok: true, vehicle: isRecentTrackingRecord(vehicle) ? vehicle : null, vehicles })
       }
       return res.status(200).json({ ok: true, vehicles })
     }
