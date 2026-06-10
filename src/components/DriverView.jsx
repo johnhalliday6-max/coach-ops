@@ -1051,7 +1051,7 @@ export default function DriverView({ selectedFleet }) {
           </div>
 
           <RouteMap
-            height="calc(100vh - 190px)"
+            height="100%"
             fleetNo={vehicle.fleetNo}
             reg={vehicle.reg}
             vehicle={vehicle}
