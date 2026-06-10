@@ -224,6 +224,47 @@ function nearestRouteIndex(position, geometry) {
   return bestIndex;
 }
 
+function distanceToSegmentMetres(position, a, b) {
+  if (!position || !a || !b) return Infinity;
+  const lat = Number(position.lat ?? position[0]);
+  const lng = Number(position.lng ?? position[1]);
+  const lat1 = Number(a.lat ?? a[0]);
+  const lng1 = Number(a.lng ?? a[1]);
+  const lat2 = Number(b.lat ?? b[0]);
+  const lng2 = Number(b.lng ?? b[1]);
+  if (![lat, lng, lat1, lng1, lat2, lng2].every(Number.isFinite)) return Infinity;
+
+  const metresPerDegreeLat = 111320;
+  const metresPerDegreeLng = Math.cos((lat * Math.PI) / 180) * 111320;
+  const px = (lng - lng1) * metresPerDegreeLng;
+  const py = (lat - lat1) * metresPerDegreeLat;
+  const vx = (lng2 - lng1) * metresPerDegreeLng;
+  const vy = (lat2 - lat1) * metresPerDegreeLat;
+  const lengthSq = vx * vx + vy * vy;
+  if (!lengthSq) return metresBetween(position, a);
+
+  const t = Math.max(0, Math.min(1, (px * vx + py * vy) / lengthSq));
+  const dx = px - vx * t;
+  const dy = py - vy * t;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function routeProgressIndex(position, geometry) {
+  if (!position || !Array.isArray(geometry) || geometry.length === 0) return 0;
+  if (geometry.length === 1) return 0;
+
+  let bestIndex = nearestRouteIndex(position, geometry);
+  let bestDistance = Infinity;
+  for (let index = 0; index < geometry.length - 1; index += 1) {
+    const distance = distanceToSegmentMetres(position, geometry[index], geometry[index + 1]);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index + 1;
+    }
+  }
+  return bestIndex;
+}
+
 function LerpVehicle({ target, setDisplayVehicle }) {
   const previous = useRef(null);
 
@@ -276,6 +317,7 @@ export default function RouteMap({
   const [displayVehicle, setDisplayVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
   const [autoFollow, setAutoFollow] = useState(true);
+  const lastGoodTrafficFlowRef = useRef(null);
   const lookupVehicle = useMemo(() => vehicle || { fleetNo, reg }, [vehicle, fleetNo, reg]);
 
   useEffect(() => {
@@ -331,13 +373,43 @@ export default function RouteMap({
         .then((data) => {
           if (!cancelled && data?.ok) {
             setTomTomTraffic(Array.isArray(data.incidents) ? data.incidents : []);
-            setTrafficFlow(data.flow || null);
-            setTrafficDiagnostics(data.diagnostics || { status: data.flow ? "connected" : "no-flow", lastCheck: new Date().toISOString() });
+            if (data.flow) {
+              lastGoodTrafficFlowRef.current = {
+                flow: data.flow,
+                diagnostics: data.diagnostics || { status: "connected", lastCheck: new Date().toISOString() },
+                savedAt: Date.now(),
+              };
+              setTrafficFlow(data.flow);
+              setTrafficDiagnostics(data.diagnostics || { status: "connected", lastCheck: new Date().toISOString() });
+              return;
+            }
+
+            const held = lastGoodTrafficFlowRef.current;
+            if (held && Date.now() - held.savedAt < 5 * 60 * 1000) {
+              setTrafficFlow(held.flow);
+              setTrafficDiagnostics({
+                ...(data.diagnostics || held.diagnostics || {}),
+                status: "holding-last-flow",
+                lastCheck: new Date().toISOString(),
+              });
+              return;
+            }
+
+            setTrafficFlow(null);
+            setTrafficDiagnostics(data.diagnostics || { status: "no-flow", lastCheck: new Date().toISOString() });
           }
         })
         .catch((err) => {
           console.error('TomTom traffic error:', err);
-          if (!cancelled) setTrafficDiagnostics({ status: 'error', error: String(err), lastCheck: new Date().toISOString() });
+          if (!cancelled) {
+            const held = lastGoodTrafficFlowRef.current;
+            if (held && Date.now() - held.savedAt < 5 * 60 * 1000) {
+              setTrafficFlow(held.flow);
+              setTrafficDiagnostics({ status: 'holding-last-flow', error: String(err), lastCheck: new Date().toISOString() });
+            } else {
+              setTrafficDiagnostics({ status: 'error', error: String(err), lastCheck: new Date().toISOString() });
+            }
+          }
         });
     };
 
@@ -424,7 +496,7 @@ export default function RouteMap({
   const freeFlowSpeed = trafficFlow?.freeFlowSpeed != null ? Math.round(Number(trafficFlow.freeFlowSpeed)) : null;
   const trafficState = trafficStatus(trafficFlow);
   const rawRouteLine = visibleRoute?.geometry?.length > 1 ? visibleRoute.geometry : [];
-  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, nearestRouteIndex(liveVehicle, rawRouteLine) - 2) : 0;
+  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine)) : 0;
   const activeRouteLine = rawRouteLine.slice(trimIndex);
   const routeId = visibleRoute?.updatedAt || `${activeRouteLine.length}-${visibleRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;

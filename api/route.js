@@ -1,4 +1,4 @@
-import { findSavedPlace } from './lib/places.js'
+import { findSavedPlace } from '../server/lib/places.js'
 
 function toMiles(metres) {
   return Math.round((Number(metres || 0) / 1609.344) * 10) / 10

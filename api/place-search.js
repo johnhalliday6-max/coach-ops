@@ -1,4 +1,4 @@
-import { savedMatches } from './lib/places.js'
+import { savedMatches } from '../server/lib/places.js'
 
 function cleanLabel(row, fallback) {
   return row?.display_name || row?.name || fallback

@@ -23,7 +23,14 @@ export function savedMatches(query, limit = 8) {
   if (!q) return []
   return SAVED_PLACES.filter((place) => place.terms.some((term) => term.includes(q) || q.includes(term)))
     .slice(0, limit)
-    .map(({ terms, ...place }) => ({ ...place, source: 'saved' }))
+    .map((place) => ({
+      lat: place.lat,
+      lng: place.lng,
+      label: place.label,
+      shortLabel: place.shortLabel,
+      type: place.type,
+      source: 'saved',
+    }))
 }
 
 export function findSavedPlace(query) {
@@ -31,6 +38,12 @@ export function findSavedPlace(query) {
   if (!q) return null
   const found = SAVED_PLACES.find((place) => place.terms.some((term) => term === q || term.includes(q) || q.includes(term)))
   if (!found) return null
-  const { terms, ...place } = found
-  return { ...place, source: 'saved' }
+  return {
+    lat: found.lat,
+    lng: found.lng,
+    label: found.label,
+    shortLabel: found.shortLabel,
+    type: found.type,
+    source: 'saved',
+  }
 }

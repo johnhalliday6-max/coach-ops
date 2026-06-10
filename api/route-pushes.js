@@ -1,5 +1,5 @@
-import { hasSupabase, supabaseFetch } from './lib/storage.js'
-import { bodyVehicleScope, cleanVehiclePart, legacyVehicleKeys, parseScopedVehicleKey, requestVehicleScope } from './lib/vehicleIdentity.js'
+import { hasSupabase, supabaseFetch } from '../server/lib/storage.js'
+import { bodyVehicleScope, cleanVehiclePart, legacyVehicleKeys, parseScopedVehicleKey, requestVehicleScope } from '../server/lib/vehicleIdentity.js'
 
 const store = globalThis.__coachOpsRoutePushStore || []
 globalThis.__coachOpsRoutePushStore = store

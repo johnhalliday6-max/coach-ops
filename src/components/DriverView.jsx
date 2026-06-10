@@ -62,12 +62,43 @@ function metresBetween(a, b) {
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-function distanceToRouteMetres(position, geometry) {
-  if (!position || !Array.isArray(geometry) || geometry.length === 0) return Infinity;
-  let best = Infinity;
-  for (const point of geometry) {
-    const d = metresBetween(position, point);
-    if (d < best) best = d;
+function distanceToSegmentMetres(position, a, b) {
+  if (!position || !a || !b) return Infinity;
+  const lat = Number(position.lat ?? position[0]);
+  const lng = Number(position.lng ?? position[1]);
+  const lat1 = Number(a.lat ?? a[0]);
+  const lng1 = Number(a.lng ?? a[1]);
+  const lat2 = Number(b.lat ?? b[0]);
+  const lng2 = Number(b.lng ?? b[1]);
+  if (![lat, lng, lat1, lng1, lat2, lng2].every(Number.isFinite)) return Infinity;
+
+  const metresPerDegreeLat = 111320;
+  const metresPerDegreeLng = Math.cos((lat * Math.PI) / 180) * 111320;
+  const px = (lng - lng1) * metresPerDegreeLng;
+  const py = (lat - lat1) * metresPerDegreeLat;
+  const vx = (lng2 - lng1) * metresPerDegreeLng;
+  const vy = (lat2 - lat1) * metresPerDegreeLat;
+  const lengthSq = vx * vx + vy * vy;
+  if (!lengthSq) return metresBetween(position, a);
+
+  const t = Math.max(0, Math.min(1, (px * vx + py * vy) / lengthSq));
+  const dx = px - vx * t;
+  const dy = py - vy * t;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function distanceToRouteProgress(position, geometry) {
+  if (!position || !Array.isArray(geometry) || geometry.length === 0) {
+    return { distance: Infinity, index: 0 };
+  }
+  if (geometry.length === 1) {
+    return { distance: metresBetween(position, geometry[0]), index: 0 };
+  }
+
+  let best = { distance: Infinity, index: 0 };
+  for (let index = 0; index < geometry.length - 1; index += 1) {
+    const distance = distanceToSegmentMetres(position, geometry[index], geometry[index + 1]);
+    if (distance < best.distance) best = { distance, index: index + 1 };
   }
   return best;
 }
@@ -90,8 +121,8 @@ function instructionIndexFromRouteProgress(position, route) {
   const instructions = route?.instructions || [];
   const geometry = route?.geometry || [];
   if (!position || instructions.length === 0 || geometry.length === 0) return 0;
-  const shapeIndex = nearestRouteGeometryIndex(position, geometry);
-  const next = instructions.findIndex((step) => Number(step.endShapeIndex ?? step.beginShapeIndex ?? 0) >= shapeIndex + 3);
+  const shapeIndex = distanceToRouteProgress(position, geometry).index ?? nearestRouteGeometryIndex(position, geometry);
+  const next = instructions.findIndex((step) => Number(step.endShapeIndex ?? step.beginShapeIndex ?? 0) >= shapeIndex + 2);
   if (next >= 0) return next;
   return Math.max(0, instructions.length - 1);
 }
@@ -206,6 +237,8 @@ export default function DriverView({ selectedFleet }) {
   const currentVehicleRef = useRef(defaultVehicle);
   const watchId = useRef(null);
   const rerouteLock = useRef(false);
+  const offRouteMissesRef = useRef(0);
+  const lastGoodTomTomFlowRef = useRef(null);
   const wakeLockRef = useRef(null);
   const routeCacheRef = useRef({});
 
@@ -632,13 +665,43 @@ export default function DriverView({ selectedFleet }) {
         .then((res) => res.json())
         .then((data) => {
           if (!cancelled && data?.ok) {
-            setTrafficFlow(data.flow || null);
-            setTomTomStatus(data.diagnostics || { status: data.flow ? "connected" : "no-flow", lastCheck: new Date().toISOString() });
+            if (data.flow) {
+              lastGoodTomTomFlowRef.current = {
+                flow: data.flow,
+                diagnostics: data.diagnostics || { status: "connected", lastCheck: new Date().toISOString() },
+                savedAt: Date.now(),
+              };
+              setTrafficFlow(data.flow);
+              setTomTomStatus(data.diagnostics || { status: "connected", lastCheck: new Date().toISOString() });
+              return;
+            }
+
+            const held = lastGoodTomTomFlowRef.current;
+            if (held && Date.now() - held.savedAt < 5 * 60 * 1000) {
+              setTrafficFlow(held.flow);
+              setTomTomStatus({
+                ...(data.diagnostics || held.diagnostics || {}),
+                status: "holding-last-flow",
+                lastCheck: new Date().toISOString(),
+              });
+              return;
+            }
+
+            setTrafficFlow(null);
+            setTomTomStatus(data.diagnostics || { status: "no-flow", lastCheck: new Date().toISOString() });
           }
         })
         .catch((err) => {
           console.error('Driver TomTom flow failed', err);
-          if (!cancelled) setTomTomStatus({ status: 'error', error: String(err), lastCheck: new Date().toISOString() });
+          if (!cancelled) {
+            const held = lastGoodTomTomFlowRef.current;
+            if (held && Date.now() - held.savedAt < 5 * 60 * 1000) {
+              setTrafficFlow(held.flow);
+              setTomTomStatus({ status: 'holding-last-flow', error: String(err), lastCheck: new Date().toISOString() });
+            } else {
+              setTomTomStatus({ status: 'error', error: String(err), lastCheck: new Date().toISOString() });
+            }
+          }
         });
     };
 
@@ -730,19 +793,31 @@ export default function DriverView({ selectedFleet }) {
     const nextIndex = instructionIndexFromRouteProgress(currentPoint, routeSummary);
     setActiveStepIndex((current) => Math.max(current, nextIndex));
 
-    const routeDistance = distanceToRouteMetres(currentPoint, routeSummary.geometry || []);
-    const isOffRoute = routeDistance > 150;
+    const routeProgress = distanceToRouteProgress(currentPoint, routeSummary.geometry || []);
+    const routeDistance = routeProgress.distance;
+    const speedMph = Number(lastPosition.speedMps) * 2.23694;
+    const offRouteLimit = Number.isFinite(speedMph) && speedMph > 20 ? 55 : 85;
+    const isOffRoute = routeDistance > offRouteLimit;
     setOffRoute(isOffRoute);
 
-    if (isOffRoute && !rerouteLock.current && hasRouteGeometry(routeSummary)) {
+    if (!isOffRoute) {
+      offRouteMissesRef.current = 0;
+      return;
+    }
+
+    offRouteMissesRef.current += 1;
+    const missesNeeded = Number.isFinite(speedMph) && speedMph > 15 ? 2 : 3;
+
+    if (offRouteMissesRef.current >= missesNeeded && !rerouteLock.current && hasRouteGeometry(routeSummary)) {
       rerouteLock.current = true;
       window.setTimeout(() => {
         rerouteFromCurrentPosition().finally(() => {
+          offRouteMissesRef.current = 0;
           window.setTimeout(() => {
             rerouteLock.current = false;
-          }, 30000);
+          }, 10000);
         });
-      }, 800);
+      }, 300);
     }
   }, [lastPosition, routeSummary, destination]);
 
