@@ -1045,6 +1045,14 @@ export default function DriverView({ selectedFleet }) {
             </div>
           </div>
 
+          <div className="satnav-lane-strip" aria-hidden="true">
+            <span className="lane-muted">|</span>
+            <span className="lane-muted">|</span>
+            <span className="lane-active">^</span>
+            <span className="lane-active">^</span>
+            <strong>{nextStep?.roadName || routeSummary.routeEndLabel || routeSummary.destination}</strong>
+          </div>
+
           <div className="satnav-eta-strip">
             <span>ETA <strong>{etaFromMinutes(remainingNav.minutes)}</strong></span>
             <span>Remaining <strong>{remainingNav.miles || "--"} mi</strong></span>

@@ -40,6 +40,13 @@ const plannedStopIcon = L.divIcon({
   iconAnchor: [17, 17],
 });
 
+const driverStopIcon = L.divIcon({
+  className: "driver-stop-marker",
+  html: "<span>STOP</span>",
+  iconSize: [46, 46],
+  iconAnchor: [23, 42],
+});
+
 const coachParkingIcon = L.divIcon({
   className: "coach-parking-marker",
   html: "P",
@@ -502,6 +509,9 @@ export default function RouteMap({
   const freeFlowSpeed = trafficFlow?.freeFlowSpeed != null ? Math.round(Number(trafficFlow.freeFlowSpeed)) : null;
   const trafficState = trafficStatus(trafficFlow);
   const rawRouteLine = visibleRoute?.geometry?.length > 1 ? visibleRoute.geometry : [];
+  const routeStops = Array.isArray(visibleRoute?.waypoints)
+    ? visibleRoute.waypoints.filter((stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))
+    : [];
   const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine) - 8) : 0;
   const activeRouteLine = navigationMode && hasLiveVehicle && rawRouteLine.length > 1
     ? [[liveVehicle.lat, liveVehicle.lng], ...rawRouteLine.slice(trimIndex)]
@@ -524,6 +534,13 @@ export default function RouteMap({
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {!navigationMode && (
+        <TileLayer
+          attribution="Traffic &copy; TomTom"
+          opacity={0.72}
+          url="/api/tomtom-flow-tile?z={z}&x={x}&y={y}"
+        />
+      )}
 
       {!navigationMode && <LerpVehicle target={trackedVehicle} setDisplayVehicle={setDisplayVehicle} />}
 

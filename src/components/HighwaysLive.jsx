@@ -13,7 +13,7 @@ export default function HighwaysLive() {
 
         if (data?.ok && Array.isArray(data.alerts)) {
           setAlerts(data.alerts)
-          setStatus(`Live API connected · ${data.count} alerts`)
+          setStatus(`Live API connected - showing ${data.count} of ${data.totalRecords || data.count} National Highways records`)
           return
         }
 

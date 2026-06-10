@@ -132,7 +132,8 @@ export default async function handler(req, res) {
     const data = parser.parse(xml)
     const situations = asArray(data?.D2Payload?.situation)
 
-    const alerts = situations.slice(0, 12).map((situation, index) => {
+    const limit = Math.min(Math.max(Number(req.query?.limit) || 60, 1), 200)
+    const alerts = situations.map((situation, index) => {
       const record = getRecord(situation)
       const detail = clean(findUsefulComment(record), 'Live road and lane closure from National Highways')
 
@@ -168,11 +169,13 @@ export default async function handler(req, res) {
         lat,
         lng,
       }
-    })
+    }).slice(0, limit)
 
     return res.status(200).json({
       ok: true,
       count: alerts.length,
+      totalRecords: situations.length,
+      limit,
       publicationTime: data?.D2Payload?.publicationTime,
       alerts,
     })

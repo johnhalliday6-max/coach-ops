@@ -919,6 +919,26 @@ body {
   border-color: #20d86b;
 }
 
+.driver-stop-marker {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px 999px 999px 8px;
+  background: #ffffff;
+  border: 4px solid #20d86b;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.34);
+  transform: rotate(-45deg);
+}
+
+.driver-stop-marker span {
+  transform: rotate(45deg);
+  color: #0b1220;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: 0;
+}
+
 @media (max-width: 1100px) {
   .driver-route-planner-card {
     grid-template-columns: 1fr;
@@ -1116,20 +1136,21 @@ body {
   min-height: 100vh;
   background: #07111f;
   color: white;
-  padding: 10px;
+  padding: 0;
   overflow: hidden;
 }
 
 .satnav-top-card {
   background: #0c1a2d;
-  border: 1px solid #21344f;
-  border-radius: 16px;
-  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #21344f;
+  border-radius: 0;
+  padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   gap: 10px;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .satnav-top-card p {
@@ -1149,24 +1170,25 @@ body {
 
 .satnav-map-wrap {
   position: relative;
-  border-radius: 18px;
+  height: calc(100vh - 82px);
+  border-radius: 0;
   overflow: hidden;
   background: #f7f9fc;
 }
 
 .satnav-instruction-card {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  top: 12px;
+  left: 14px;
+  right: 14px;
+  top: 14px;
   z-index: 1200;
   background: rgba(6, 16, 29, 0.94);
   color: white;
-  border-radius: 16px;
-  padding: 12px;
+  border-radius: 18px;
+  padding: 14px;
   display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 12px;
+  grid-template-columns: 124px 1fr;
+  gap: 16px;
   align-items: center;
   box-shadow: 0 8px 28px rgba(0,0,0,0.35);
 }
@@ -1174,9 +1196,9 @@ body {
 .satnav-distance {
   background: #1268ff;
   border-radius: 14px;
-  padding: 16px 8px;
+  padding: 18px 8px;
   text-align: center;
-  font-size: 28px;
+  font-size: 34px;
   font-weight: 900;
 }
 
@@ -1192,10 +1214,51 @@ body {
   font-size: 20px;
 }
 
+.satnav-lane-strip {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 144px;
+  z-index: 1200;
+  height: 44px;
+  border-radius: 0 0 18px 18px;
+  background: rgba(12, 26, 45, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+  pointer-events: none;
+}
+
+.satnav-lane-strip span {
+  font-size: 25px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.satnav-lane-strip .lane-active {
+  color: #23d3ff;
+}
+
+.satnav-lane-strip .lane-muted {
+  color: rgba(255,255,255,0.38);
+}
+
+.satnav-lane-strip strong {
+  margin-left: 8px;
+  color: #dbeafe;
+  font-size: 13px;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .satnav-speed-panel {
   position: absolute;
   left: 18px;
-  bottom: 76px;
+  bottom: 96px;
   z-index: 1200;
   display: grid;
   gap: 8px;
@@ -1237,7 +1300,7 @@ body {
   position: absolute;
   left: 120px;
   right: 14px;
-  bottom: 16px;
+  bottom: 18px;
   z-index: 1200;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3106,6 +3169,114 @@ body {
   color: #9fb3c8;
   font-weight: 700;
 }
+
+/* TomTom-style sat-nav pass */
+.satnav-map-wrap .leaflet-container {
+  background: #dce8d2;
+}
+
+.satnav-lane-strip {
+  border: 1px solid rgba(35, 211, 255, 0.24);
+}
+
+.route-map-shell.navigation .leaflet-control-zoom {
+  display: none;
+}
+
+.route-map-shell.navigation .leaflet-control-attribution {
+  opacity: 0.72;
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .satnav-top-card {
+    height: 56px;
+    padding: 8px 14px;
+  }
+
+  .satnav-top-card p {
+    display: none;
+  }
+
+  .satnav-map-wrap {
+    height: calc(100vh - 56px);
+  }
+
+  .satnav-instruction-card {
+    left: 10px;
+    right: auto;
+    top: 10px;
+    width: min(58vw, 640px);
+    grid-template-columns: 106px 1fr;
+    padding: 10px;
+  }
+
+  .satnav-distance {
+    font-size: 28px;
+    padding: 14px 6px;
+  }
+
+  .satnav-instruction-card h1 {
+    font-size: 30px;
+  }
+
+  .satnav-instruction-card p {
+    font-size: 17px;
+    margin-top: 4px;
+  }
+
+  .satnav-lane-strip {
+    left: 12px;
+    right: auto;
+    top: 110px;
+    width: min(54vw, 590px);
+    height: 34px;
+  }
+
+  .satnav-eta-strip {
+    left: auto;
+    right: 10px;
+    top: 10px;
+    width: min(34vw, 360px);
+    grid-template-columns: 1fr;
+  }
+
+  .satnav-speed-panel {
+    left: 12px;
+    bottom: 12px;
+    grid-template-columns: 78px 78px;
+  }
+
+  .speed-limit-circle,
+  .current-speed-box {
+    width: 78px;
+    height: 78px;
+    border-width: 8px;
+  }
+
+  .speed-limit-circle strong,
+  .current-speed-box strong {
+    font-size: 24px;
+  }
+
+  .satnav-actions {
+    left: auto;
+    right: 10px;
+    bottom: 10px;
+    width: min(38vw, 420px);
+  }
+
+  .satnav-actions button {
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  .map-traffic-speed-badge,
+  .tomtom-debug-badge,
+  .map-heading-badge {
+    display: none;
+  }
+}
+
 @media (max-width: 700px) {
   .driver-tomtom-status-card,
   .driver-gps-status-card {
