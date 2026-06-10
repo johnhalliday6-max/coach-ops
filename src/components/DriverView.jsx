@@ -640,8 +640,14 @@ export default function DriverView({ selectedFleet }) {
   const applyRouteToDriver = async (route, sourceText = "Route loaded") => {
     if (!route) return;
     const activeVehicle = currentVehicleRef.current || vehicle;
+    const phoneStart = lastPosition?.lat && lastPosition?.lng
+      ? { lat: lastPosition.lat, lng: lastPosition.lng, label: 'Phone GPS now' }
+      : null;
+    const rebuiltRoute = route.plotPoints?.length
+      ? await buildVehicleRoute(activeVehicle, route, { startOverride: phoneStart })
+      : route;
     const routeForVehicle = {
-      ...route,
+      ...rebuiltRoute,
       fleetNo: activeVehicle.fleetNo,
       reg: activeVehicle.reg,
       operator: activeVehicle.operator,
@@ -652,21 +658,19 @@ export default function DriverView({ selectedFleet }) {
       updatedAt: new Date().toISOString(),
     };
 
-    await fetch("/api/routes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(routeForVehicle),
-    });
-    setDestination(routeForVehicle.routeEndLabel || routeForVehicle.destination || destination);
-    setStops(Array.isArray(routeForVehicle.stops) ? routeForVehicle.stops : []);
-    setRouteSummary(routeForVehicle);
-    setRouteStatus(`Route ready: ${routeDisplayName(routeForVehicle)} · ${route.distanceMiles || '--'} miles · approx ${route.durationMinutes || '--'} mins`);
+    const savedRoute = await saveActiveRoute(routeForVehicle);
+    setDestination(savedRoute.routeEndLabel || savedRoute.destination || destination);
+    setStops(Array.isArray(savedRoute.stops) ? savedRoute.stops : []);
+    setRouteSummary(savedRoute);
+    setActiveStepIndex(0);
+    setOffRoute(false);
+    offRouteMissesRef.current = 0;
+    setRouteStatus(`Route ready from phone GPS: ${routeDisplayName(savedRoute)} - ${savedRoute.distanceMiles || '--'} miles - approx ${savedRoute.durationMinutes || '--'} mins`);
     setLastAction(sourceText);
-    setNavMode(hasRouteGeometry(routeForVehicle));
+    setNavMode(hasRouteGeometry(savedRoute));
     requestWakeLock();
-    await postOfficeRequest("ROUTE_SYNC", `${sourceText}: ${routeDisplayName(routeForVehicle)}`, "driver", { route: routeForVehicle });
+    await postOfficeRequest("ROUTE_SYNC", `${sourceText}: ${routeDisplayName(savedRoute)}`, "driver", { route: savedRoute });
   };
-
   const acceptRoutePush = async () => {
     if (!pendingRoutePush?.route) return;
     await applyRouteToDriver(pendingRoutePush.route, "Office route accepted");
@@ -675,7 +679,7 @@ export default function DriverView({ selectedFleet }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: pendingRoutePush.id, accepted: true }),
     });
-    await postOfficeRequest("ROUTE_ACCEPTED", `Driver accepted office route: ${routeDisplayName(pendingRoutePush.route)}`, "driver", { route: pendingRoutePush.route });
+    await postOfficeRequest("ROUTE_ACCEPTED", `Driver accepted office route: ${routeDisplayName(pendingRoutePush.route)}`, "driver");
     setPendingRoutePush(null);
   };
 
@@ -1096,9 +1100,31 @@ export default function DriverView({ selectedFleet }) {
 
   const latestOfficeMessages = officeRequests.filter((item) => item.source === "office");
 
-  const startOrResumeRoute = () => {
+  const startOrResumeRoute = async () => {
     if (hasRouteGeometry(routeSummary)) {
-      setRouteStatus(`Navigation ready: ${routeDisplayName(routeSummary)}`);
+      let navigationRoute = routeSummary;
+      if (routeSummary.plotPoints?.length && lastPosition?.lat && lastPosition?.lng) {
+        try {
+          setRouteStatus('Refreshing route from phone GPS...');
+          const activeVehicle = currentVehicleRef.current || vehicle;
+          const rebuilt = await buildVehicleRoute(activeVehicle, routeSummary, {
+            startOverride: { lat: lastPosition.lat, lng: lastPosition.lng, label: 'Phone GPS now' },
+          });
+          const savedRoute = await saveActiveRoute({ ...routeSummary, ...rebuilt, source: routeSummary.source || 'driver-refresh' });
+          navigationRoute = savedRoute;
+          setRouteSummary(savedRoute);
+          setDestination(savedRoute.routeEndLabel || savedRoute.destination || '');
+          setStops(Array.isArray(savedRoute.stops) ? savedRoute.stops : []);
+          setActiveStepIndex(0);
+          setOffRoute(false);
+          offRouteMissesRef.current = 0;
+          await postOfficeRequest('ROUTE_SYNC', `Driver refreshed route from phone GPS: ${routeDisplayName(savedRoute)}`, 'driver', { route: savedRoute });
+        } catch (error) {
+          console.error(error);
+          setRouteStatus('Could not refresh route - using current route');
+        }
+      }
+      setRouteStatus(`Navigation ready: ${routeDisplayName(navigationRoute)}`);
       setNavMode(true);
       requestWakeLock();
       return;

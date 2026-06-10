@@ -56,29 +56,33 @@ export async function clearVehicleRoute(vehicle) {
   ]);
 }
 
-export async function buildVehicleRoute(vehicle, routeInput) {
+export async function buildVehicleRoute(vehicle, routeInput, options = {}) {
   const directPoints = Array.isArray(routeInput.plotPoints)
     ? routeInput.plotPoints
         .map((point) => ({
           lat: Number(point.lat),
           lng: Number(point.lng),
           label: String(point.label || point.name || 'Route point'),
-          type: point.type === 'via' ? 'via' : 'stop',
+          type: point.type === 'via' ? 'via' : point.type === 'start' ? 'start' : 'stop',
         }))
         .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
     : [];
+  const plannedPoints = directPoints[0]?.type === 'start' ? directPoints.slice(1) : directPoints;
 
   const rawDestination = String(
-    routeInput.destination || directPoints[directPoints.length - 1]?.label || ''
+    routeInput.routeEndLabel || plannedPoints[plannedPoints.length - 1]?.label || routeInput.destination || ''
   ).trim();
   if (!rawDestination) throw new Error('Destination required');
   const displayDestination = displayRouteDestination(routeInput, rawDestination);
 
-  const liveStart = await getVehicleStart(vehicle);
-  const routePoints = directPoints.length >= 2
-    ? metresBetween(liveStart, directPoints[0]) > 60
-      ? [{ lat: liveStart.lat, lng: liveStart.lng, label: liveStart.label || 'Live vehicle GPS', type: 'start' }, ...directPoints]
-      : directPoints
+  const overrideStart = options.startOverride;
+  const liveStart = overrideStart?.lat && overrideStart?.lng
+    ? { lat: overrideStart.lat, lng: overrideStart.lng, label: overrideStart.label || 'Phone GPS now' }
+    : await getVehicleStart(vehicle);
+  const routePoints = plannedPoints.length >= 2
+    ? metresBetween(liveStart, plannedPoints[0]) > 60
+      ? [{ lat: liveStart.lat, lng: liveStart.lng, label: liveStart.label || 'Live vehicle GPS', type: 'start' }, ...plannedPoints]
+      : plannedPoints
     : [];
 
   const stops = routePoints.length >= 2
