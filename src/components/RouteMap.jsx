@@ -130,6 +130,40 @@ function ResizeMapWatcher({ watchKey }) {
   return null;
 }
 
+function HeadingUpMap({ enabled, heading }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const bearing = Number.isFinite(Number(heading)) ? Number(heading) : 0;
+    const panes = [
+      map.getPane("tilePane"),
+      map.getPane("overlayPane"),
+      map.getPane("shadowPane"),
+      map.getPane("markerPane"),
+      map.getPane("tooltipPane"),
+      map.getPane("popupPane"),
+    ].filter(Boolean);
+
+    panes.forEach((pane) => {
+      pane.style.transformOrigin = "50% 50%";
+      pane.style.rotate = enabled ? `${-bearing}deg` : "";
+      pane.style.transition = enabled ? "rotate 0.35s ease-out" : "";
+    });
+
+    map.getContainer().style.setProperty("--map-bearing", enabled ? `${bearing}deg` : "0deg");
+
+    return () => {
+      panes.forEach((pane) => {
+        pane.style.rotate = "";
+        pane.style.transition = "";
+      });
+      map.getContainer().style.setProperty("--map-bearing", "0deg");
+    };
+  }, [enabled, heading, map]);
+
+  return null;
+}
+
 const UK_TRAFFIC_BBOX = "-8.65000,49.85000,1.90000,58.75000";
 
 function trafficRatio(flow) {
@@ -369,15 +403,17 @@ export default function RouteMap({
   const liveVehicle = navigationMode ? trackedVehicle : (displayVehicle || trackedVehicle);
   const hasLiveVehicle = Boolean(liveVehicle?.lat && liveVehicle?.lng);
   const heading = Number(liveVehicle?.heading || 0);
+  const coachArrowHeading = navigationMode ? 0 : heading;
+  const mapBearing = navigationMode && hasLiveVehicle && Number.isFinite(heading) ? heading : 0;
   const coachIcon = useMemo(
     () =>
       L.divIcon({
         className: "coach-live-marker",
-        html: `<div class="coach-live-dot"><span style="transform: rotate(${Number.isFinite(heading) ? heading : 0}deg)">▲</span><small>${fleetNo}</small></div>`,
+        html: `<div class="coach-live-dot"><span style="transform: rotate(${Number.isFinite(coachArrowHeading) ? coachArrowHeading : 0}deg)">▲</span><small>${fleetNo}</small></div>`,
         iconSize: [40, 40],
         iconAnchor: [20, 20],
       }),
-    [fleetNo, heading],
+    [fleetNo, coachArrowHeading],
   );
   const routeStartPosition = visibleRoute?.start ? [visibleRoute.start.lat, visibleRoute.start.lng] : null;
   const coachPosition = hasLiveVehicle ? [liveVehicle.lat, liveVehicle.lng] : null;
@@ -418,6 +454,7 @@ export default function RouteMap({
       />
       <ManualMapWatcher enabled={navigationMode} onManualMove={() => setAutoFollow(false)} />
       <ResizeMapWatcher watchKey={`${height}-${navigationMode}-${routeId}`} />
+      <HeadingUpMap enabled={navigationMode && hasLiveVehicle} heading={mapBearing} />
       <FollowCoach
         position={coachPosition || mapCenter}
         enabled={(followCoach || navigationMode) && hasLiveVehicle}
@@ -519,6 +556,12 @@ export default function RouteMap({
     {navigationMode && autoFollow && (
       <div className="map-follow-badge">LIVE FOLLOW</div>
     )}
+    {navigationMode && hasLiveVehicle && (
+      <div className="map-heading-badge">
+        <span>HEADING</span>
+        <strong>{Math.round(mapBearing)} deg</strong>
+      </div>
+    )}
 
     {navigationMode && routeOverride?.showDiagnostics && (
       <div className="tomtom-debug-badge">
@@ -539,3 +582,4 @@ export default function RouteMap({
     </div>
   );
 }
+

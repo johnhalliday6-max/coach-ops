@@ -1664,6 +1664,42 @@ body {
   letter-spacing: 0.08em;
 }
 
+.map-heading-badge {
+  position: absolute;
+  left: 14px;
+  bottom: 88px;
+  z-index: 1000;
+  display: grid;
+  gap: 2px;
+  min-width: 76px;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(6, 16, 29, 0.86);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.map-heading-badge span {
+  color: #93c5fd;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.map-heading-badge strong {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.driver-satnav-map .coach-live-dot small,
+.driver-satnav-map .map-emoji-marker,
+.driver-satnav-map .leaflet-popup-content-wrapper,
+.driver-satnav-map .leaflet-popup-tip {
+  rotate: var(--map-bearing);
+}
+
 .driver-satnav-map .leaflet-control-zoom {
   margin-top: 92px;
 }
