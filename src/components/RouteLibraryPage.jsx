@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { deleteCustomRoute, loadRouteLibrary, saveCustomRoute } from '../data/routeLibrary';
+import {
+  deleteSharedRoute,
+  loadRouteLibrary,
+  loadSharedRouteLibrary,
+  prepareRouteTemplate,
+  routeMatchesCompany,
+  saveSharedRoute,
+} from '../data/routeLibrary';
 import { fleetData } from '../data/fleetData';
 import { buildVehicleRoute, pushRouteToDriver, saveActiveRoute } from '../shared/routePlanning';
 import PlaceSearchBox from './PlaceSearchBox';
@@ -45,6 +52,10 @@ function blankForm(selectedFleet) {
   };
 }
 
+function companyForVehicle(vehicle) {
+  return vehicle?.category || vehicle?.operator || 'Unassigned';
+}
+
 function MapClickAdder({ onAdd }) {
   useMapEvents({
     click(event) {
@@ -77,13 +88,37 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
   const [editing, setEditing] = useState(true);
   const [form, setForm] = useState(blankForm(selectedFleet));
   const [targetFleetNo, setTargetFleetNo] = useState(selectedFleet?.fleetNo || '');
+  const [companyFilter, setCompanyFilter] = useState(companyForVehicle(selectedFleet));
+  const [reverseRoute, setReverseRoute] = useState(false);
 
   const availableFleet = useMemo(() => getManagedFleet(), []);
   const targetFleet = useMemo(() => availableFleet.find((item) => item.fleetNo === targetFleetNo) || selectedFleet, [availableFleet, targetFleetNo, selectedFleet]);
+  const companyOptions = useMemo(
+    () => ['All', ...new Set(availableFleet.map(companyForVehicle).filter(Boolean))],
+    [availableFleet],
+  );
 
   useEffect(() => {
-    if (selectedFleet?.fleetNo) setTargetFleetNo(selectedFleet.fleetNo);
-  }, [selectedFleet?.fleetNo]);
+    if (selectedFleet?.fleetNo) {
+      setTargetFleetNo(selectedFleet.fleetNo);
+      setCompanyFilter(companyForVehicle(selectedFleet));
+    }
+  }, [selectedFleet]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSharedRouteLibrary(companyFilter)
+      .then((sharedRoutes) => {
+        if (!cancelled) setRoutes(sharedRoutes.length ? sharedRoutes : loadRouteLibrary());
+      })
+      .catch((error) => {
+        console.warn('Could not load shared route library', error);
+        if (!cancelled) setRoutes(loadRouteLibrary());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyFilter]);
 
   const selectedRoute = useMemo(
     () => routes.find((route) => route.id === selectedRouteId) || null,
@@ -109,19 +144,34 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
 
   const filteredRoutes = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return routes;
-    return routes.filter((route) =>
-      `${route.number} ${route.name} ${route.operator} ${route.category} ${(route.stops || []).join(' ')} ${route.destination}`
+    return routes.filter((route) => {
+      if (!routeMatchesCompany(route, companyFilter)) return false;
+      if (!q) return true;
+      return `${route.number} ${route.name} ${route.operator} ${route.category} ${(route.stops || []).join(' ')} ${route.destination}`
         .toLowerCase()
-        .includes(q),
-    );
-  }, [routes, search]);
+        .includes(q);
+    });
+  }, [routes, search, companyFilter]);
 
   useEffect(() => {
     if (!selectedRouteId && routes[0]?.id) setSelectedRouteId(routes[0].id);
   }, [routes, selectedRouteId]);
 
-  const refreshRoutes = () => setRoutes(loadRouteLibrary());
+  useEffect(() => {
+    if (filteredRoutes.length && !filteredRoutes.some((route) => route.id === selectedRouteId)) {
+      setSelectedRouteId(filteredRoutes[0].id);
+      setEditing(false);
+    }
+  }, [filteredRoutes, selectedRouteId]);
+
+  const refreshRoutes = async () => {
+    try {
+      const sharedRoutes = await loadSharedRouteLibrary(companyFilter);
+      setRoutes(sharedRoutes.length ? sharedRoutes : loadRouteLibrary());
+    } catch {
+      setRoutes(loadRouteLibrary());
+    }
+  };
 
   const startNewRoute = () => {
     setEditing(true);
@@ -181,7 +231,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     });
   };
 
-  const saveRoute = () => {
+  const saveRoute = async () => {
     const points = (form.points || []).map(normalisePoint).filter((point) => point.label.trim());
     if (!form.number.trim() || !form.name.trim()) {
       setStatus('Route number and route name are required.');
@@ -206,23 +256,39 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
       notes: form.notes.trim(),
     };
 
-    saveCustomRoute(route);
-    refreshRoutes();
-    setSelectedRouteId(route.id);
-    setStatus(`Saved route ${route.number} - ${route.name}.`);
-    setEditing(false);
+    setBusy(true);
+    try {
+      const savedRoute = await saveSharedRoute(route);
+      await refreshRoutes();
+      setSelectedRouteId(savedRoute.id || route.id);
+      setStatus(`Saved route ${route.number} - ${route.name}.`);
+      setEditing(false);
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message || 'Could not save route.');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const deleteRoute = () => {
+  const deleteRoute = async () => {
     if (!selectedRoute) return;
     const ok = window.confirm(`Delete route ${selectedRoute.number} - ${selectedRoute.name}?`);
     if (!ok) return;
-    deleteCustomRoute(selectedRoute.id);
-    refreshRoutes();
-    setSelectedRouteId('');
-    setEditing(true);
-    setForm(blankForm(selectedFleet));
-    setStatus('Route removed from the library.');
+    setBusy(true);
+    try {
+      await deleteSharedRoute(selectedRoute.id);
+      await refreshRoutes();
+      setSelectedRouteId('');
+      setEditing(true);
+      setForm(blankForm(selectedFleet));
+      setStatus('Route removed from the library.');
+    } catch (error) {
+      console.error(error);
+      setStatus(error.message || 'Could not delete route.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const plotRoute = async ({ push = false } = {}) => {
@@ -268,6 +334,14 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
             <h3>Saved Routes</h3>
             <button type="button" onClick={startNewRoute}>+ New blank route</button>
           </div>
+          <label className="route-company-filter">
+            Company
+            <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)}>
+              {companyOptions.map((company) => (
+                <option key={company} value={company}>{company}</option>
+              ))}
+            </select>
+          </label>
           <input
             className="route-library-search"
             value={search}
@@ -364,10 +438,18 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
 
           {!editing && selectedRoute && (
             <div className="route-push-target-row">
+              <label className="route-reverse-toggle">
+                <input
+                  type="checkbox"
+                  checked={reverseRoute}
+                  onChange={(event) => setReverseRoute(event.target.checked)}
+                />
+                Run this route in reverse
+              </label>
               <label>
                 Push to coach
                 <select value={targetFleetNo} onChange={(event) => setTargetFleetNo(event.target.value)}>
-                  {availableFleet.map((item) => (
+                  {availableFleet.filter((item) => companyFilter === 'All' || companyForVehicle(item) === companyFilter).map((item) => (
                     <option key={item.fleetNo} value={item.fleetNo}>{item.fleetNo} / {item.reg} · {item.depot}</option>
                   ))}
                 </select>

@@ -7,6 +7,7 @@ globalThis.__coachOpsRoutesStore = store
 function memoryRoutes() {
   const unique = new Map()
   Array.from(store.values()).forEach((route) => {
+    if (String(route?.vehicleKey || '').startsWith('ROUTE_LIBRARY::')) return
     const key = route?.vehicleKey || `${route?.fleetNo || ''}-${route?.reg || ''}-${route?.updatedAt || ''}`
     if (key && !unique.has(key)) unique.set(key, route)
   })
@@ -107,14 +108,16 @@ export default async function handler(req, res) {
 
       if (hasSupabase()) {
         try {
-          let rows = await supabaseFetch(vehicleId ? `routes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=1` : 'routes?order=created_at.desc&limit=50')
+          let rows = await supabaseFetch(vehicleId ? `routes?vehicle=eq.${encodeURIComponent(vehicleId)}&order=created_at.desc&limit=1` : 'routes?order=created_at.desc&limit=80')
           if (vehicleId && (!Array.isArray(rows) || !rows.length)) {
             for (const legacyKey of fallbackKeys) {
               rows = await supabaseFetch(`routes?vehicle=eq.${encodeURIComponent(legacyKey)}&order=created_at.desc&limit=1`)
               if (Array.isArray(rows) && rows.length) break
             }
           }
-          const routes = (Array.isArray(rows) ? rows : []).map(fromDbRoute)
+          const routes = (Array.isArray(rows) ? rows : [])
+            .filter((row) => !String(row?.vehicle || '').startsWith('ROUTE_LIBRARY::'))
+            .map(fromDbRoute)
           return res.status(200).json({ ok: true, route: vehicleId ? routes[0] || null : null, routes })
         } catch (error) {
           console.warn('Supabase route read failed, using memory fallback', error.message)

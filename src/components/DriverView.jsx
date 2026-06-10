@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import RouteMap from "./RouteMap";
 import DriverIntel from "./DriverIntel";
 import { fleetData } from "../data/fleetData";
+import { loadSharedRouteLibrary, prepareRouteTemplate } from "../data/routeLibrary";
 import PlaceSearchBox from "./PlaceSearchBox";
+import { buildVehicleRoute, saveActiveRoute } from "../shared/routePlanning";
 import { vehicleCompany, vehicleLookupParams, vehicleScopeKey } from "../shared/vehicleIdentity";
 
 const DRIVER_TEST_PROFILES = {
@@ -233,6 +235,9 @@ export default function DriverView({ selectedFleet }) {
   const [offRoute, setOffRoute] = useState(false);
   const [trafficFlow, setTrafficFlow] = useState(null);
   const [tomTomStatus, setTomTomStatus] = useState({ status: "not checked", lastCheck: null, sampledPoints: 0, returnedFlows: 0 });
+  const [driverRouteLibrary, setDriverRouteLibrary] = useState([]);
+  const [selectedDriverRouteId, setSelectedDriverRouteId] = useState("");
+  const [driverRouteReverse, setDriverRouteReverse] = useState(false);
   const selectedVehicleRef = useRef(defaultVehicle.fleetNo);
   const currentVehicleRef = useRef(defaultVehicle);
   const watchId = useRef(null);
@@ -262,11 +267,36 @@ export default function DriverView({ selectedFleet }) {
     [availableFleet, selectedCompany],
   );
   const isDeveloperDriver = driverProfile?.employeeId === "1600026";
+  const driverCompany = vehicleCompany(vehicle);
+  const selectedDriverRoute = useMemo(
+    () => driverRouteLibrary.find((route) => route.id === selectedDriverRouteId) || driverRouteLibrary[0] || null,
+    [driverRouteLibrary, selectedDriverRouteId],
+  );
 
   useEffect(() => {
     currentVehicleRef.current = vehicle;
     selectedVehicleRef.current = vehicle?.fleetNo;
   }, [vehicle]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadSharedRouteLibrary(driverCompany)
+      .then((routes) => {
+        if (cancelled) return;
+        setDriverRouteLibrary(routes);
+        setSelectedDriverRouteId((current) => current && routes.some((route) => route.id === current) ? current : routes[0]?.id || "");
+      })
+      .catch((error) => {
+        console.warn("Could not load driver route library", error);
+        if (!cancelled) {
+          setDriverRouteLibrary([]);
+          setSelectedDriverRouteId("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [driverCompany]);
 
   const remainingNav = useMemo(() => {
     const steps = (routeSummary?.instructions || []).slice(activeStepIndex);
@@ -566,6 +596,42 @@ export default function DriverView({ selectedFleet }) {
     } catch (error) {
       console.error(error);
       setRouteStatus("Route planner failed");
+    }
+  };
+
+
+  const startSavedDriverRoute = async () => {
+    const activeVehicle = currentVehicleRef.current || vehicle;
+    if (!selectedDriverRoute) {
+      setRouteStatus("No saved route selected");
+      return;
+    }
+
+    setRouteStatus(`Loading ${selectedDriverRoute.number}${driverRouteReverse ? " reverse" : ""}...`);
+    try {
+      const routeTemplate = prepareRouteTemplate(selectedDriverRoute, { reverse: driverRouteReverse });
+      const built = await buildVehicleRoute(activeVehicle, routeTemplate);
+      const savedRoute = await saveActiveRoute({
+        ...built,
+        source: "driver-library",
+        libraryRouteId: selectedDriverRoute.id,
+        reversed: driverRouteReverse,
+      });
+
+      setPendingRoutePush(null);
+      setDestination(savedRoute.routeEndLabel || savedRoute.destination || "");
+      setStops(Array.isArray(savedRoute.stops) ? savedRoute.stops : []);
+      setRouteSummary(savedRoute);
+      setActiveStepIndex(0);
+      setOffRoute(false);
+      setRouteStatus(`Route live: ${savedRoute.distanceMiles || "--"} miles - approx ${savedRoute.durationMinutes || "--"} mins`);
+      setLastAction(`Started saved route ${selectedDriverRoute.number}${driverRouteReverse ? " reverse" : ""}`);
+      setNavMode(true);
+      requestWakeLock();
+      await postOfficeRequest("ROUTE_SYNC", `Driver selected saved route ${selectedDriverRoute.number}${driverRouteReverse ? " reverse" : ""}`, "driver", { route: savedRoute });
+    } catch (error) {
+      console.error(error);
+      setRouteStatus(error.message || "Could not start saved route");
     }
   };
 
@@ -996,9 +1062,9 @@ export default function DriverView({ selectedFleet }) {
 
           <div className="satnav-speed-panel">
             <div className="speed-limit-circle">
-              <span>TRAFFIC</span>
-              <strong>{trafficFlow?.currentSpeed != null ? Math.round(Number(trafficFlow.currentSpeed)) : '--'}</strong>
-              <small>{trafficFlow?.freeFlowSpeed != null ? `free ${Math.round(Number(trafficFlow.freeFlowSpeed))} mph` : tomTomStatus.status}</small>
+              <span>LIMIT</span>
+              <strong>--</strong>
+              <small>mph</small>
             </div>
             <div className="current-speed-box">
               <span>YOU</span>
@@ -1129,6 +1195,35 @@ export default function DriverView({ selectedFleet }) {
           <button onClick={declineRoutePush}>Decline</button>
         </section>
       )}
+
+      <section className="driver-saved-routes-card">
+        <div>
+          <strong>Saved routes</strong>
+          <p>{driverCompany}</p>
+        </div>
+        {driverRouteLibrary.length ? (
+          <>
+            <select value={selectedDriverRouteId} onChange={(event) => setSelectedDriverRouteId(event.target.value)}>
+              {driverRouteLibrary.map((route) => (
+                <option key={route.id} value={route.id}>
+                  {route.number} - {route.name}
+                </option>
+              ))}
+            </select>
+            <label>
+              <input
+                type="checkbox"
+                checked={driverRouteReverse}
+                onChange={(event) => setDriverRouteReverse(event.target.checked)}
+              />
+              Reverse
+            </label>
+            <button type="button" onClick={startSavedDriverRoute}>Start</button>
+          </>
+        ) : (
+          <small>No saved routes for this company yet.</small>
+        )}
+      </section>
 
       {routeSummary && (
         <section className="driver-assigned-route-card">
