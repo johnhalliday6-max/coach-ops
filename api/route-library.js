@@ -13,7 +13,7 @@ function libraryKey(route) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-  return `${LIBRARY_PREFIX}${clean(route.operator || route.company || 'Unassigned')}::${id || Date.now()}`
+  return `${LIBRARY_PREFIX}${clean(route.company || route.operator || 'Unassigned')}::${id || Date.now()}`
 }
 
 function normaliseRoute(route = {}) {
@@ -22,8 +22,8 @@ function normaliseRoute(route = {}) {
     id: clean(route.id || clean(route.vehicleKey || '').split('::').pop() || `${route.number || 'route'}-${route.name || Date.now()}`),
     number: clean(route.number || route.routeNumber),
     name: clean(route.name || route.routeName),
-    operator: clean(route.operator || route.company || route.category || 'Unassigned'),
-    company: clean(route.company || route.operator || route.category || 'Unassigned'),
+    operator: clean(route.operator || route.company || 'Unassigned'),
+    company: clean(route.company || route.category || route.operator || 'Unassigned'),
     category: clean(route.category || 'Route'),
     destination: clean(route.destination || plotPoints[plotPoints.length - 1]?.label),
     stops: Array.isArray(route.stops) ? route.stops : [],
@@ -57,7 +57,11 @@ function fromDbRoute(row) {
 
 function matchesCompany(route, company) {
   if (!company || company === 'All') return true
-  return clean(route.operator || route.company).toLowerCase() === clean(company).toLowerCase()
+  const wanted = clean(company).toLowerCase()
+  return [route.company, route.category, route.operator]
+    .map((value) => clean(value).toLowerCase())
+    .filter(Boolean)
+    .includes(wanted)
 }
 
 export default async function handler(req, res) {

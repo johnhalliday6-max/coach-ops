@@ -70,7 +70,11 @@ export function routeCompany(route) {
 
 export function routeMatchesCompany(route, company) {
   if (!company || company === 'All') return true;
-  return routeCompany(route) === company;
+  const wanted = String(company).trim().toLowerCase();
+  return [route?.company, route?.category, route?.operator]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .includes(wanted);
 }
 
 export function prepareRouteTemplate(route, { reverse = false } = {}) {

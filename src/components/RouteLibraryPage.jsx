@@ -65,13 +65,14 @@ function companyForVehicle(vehicle) {
 
 function MapClickAdder({ onAdd }) {
   const clickTimer = useRef(null);
+  const pointLabel = (latlng) => `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
 
   useMapEvents({
     click(event) {
       window.clearTimeout(clickTimer.current);
       clickTimer.current = window.setTimeout(() => {
         onAdd?.({
-          label: `Via road ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`,
+          label: pointLabel(event.latlng),
           lat: event.latlng.lat,
           lng: event.latlng.lng,
           type: 'via',
@@ -81,7 +82,7 @@ function MapClickAdder({ onAdd }) {
     dblclick(event) {
       window.clearTimeout(clickTimer.current);
       onAdd?.({
-        label: `Pickup ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`,
+        label: pointLabel(event.latlng),
         lat: event.latlng.lat,
         lng: event.latlng.lng,
         type: 'stop',
@@ -93,12 +94,16 @@ function MapClickAdder({ onAdd }) {
 
 function normalisePoint(item, index) {
   if (typeof item === 'string') return { label: item, lat: null, lng: null, id: `${item}-${index}`, type: 'stop' };
+  const type = item.type === 'via' ? 'via' : 'stop';
+  const label = String(item.label || item.name || `Stop ${index + 1}`)
+    .replace(/^(pickup|via road)\s+/i, '')
+    .trim();
   return {
-    id: item.id || `${item.label || 'point'}-${index}`,
-    label: item.label || item.name || `Stop ${index + 1}`,
+    id: item.id || `${label || 'point'}-${index}`,
+    label,
     lat: Number.isFinite(Number(item.lat)) ? Number(item.lat) : null,
     lng: Number.isFinite(Number(item.lng)) ? Number(item.lng) : null,
-    type: item.type === 'via' ? 'via' : 'stop',
+    type,
   };
 }
 
@@ -273,6 +278,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
       number: form.number.trim(),
       name: form.name.trim(),
       operator: form.operator.trim() || selectedFleet.operator,
+      company: companyFilter && companyFilter !== 'All' ? companyFilter : companyForVehicle(selectedFleet),
       category: form.category.trim() || 'Route',
       stops,
       destination,
