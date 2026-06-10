@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -19,6 +19,13 @@ const builderStopIcon = L.divIcon({
   html: '📍',
   iconSize: [34, 34],
   iconAnchor: [17, 17],
+});
+
+const builderViaIcon = L.divIcon({
+  className: 'map-emoji-marker route-via-marker',
+  html: '•',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
 });
 
 function makeId(value) {
@@ -57,12 +64,27 @@ function companyForVehicle(vehicle) {
 }
 
 function MapClickAdder({ onAdd }) {
+  const clickTimer = useRef(null);
+
   useMapEvents({
     click(event) {
+      window.clearTimeout(clickTimer.current);
+      clickTimer.current = window.setTimeout(() => {
+        onAdd?.({
+          label: `Via road ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`,
+          lat: event.latlng.lat,
+          lng: event.latlng.lng,
+          type: 'via',
+        });
+      }, 220);
+    },
+    dblclick(event) {
+      window.clearTimeout(clickTimer.current);
       onAdd?.({
-        label: `Map point ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`,
+        label: `Pickup ${event.latlng.lat.toFixed(5)}, ${event.latlng.lng.toFixed(5)}`,
         lat: event.latlng.lat,
         lng: event.latlng.lng,
+        type: 'stop',
       });
     },
   });
@@ -70,12 +92,13 @@ function MapClickAdder({ onAdd }) {
 }
 
 function normalisePoint(item, index) {
-  if (typeof item === 'string') return { label: item, lat: null, lng: null, id: `${item}-${index}` };
+  if (typeof item === 'string') return { label: item, lat: null, lng: null, id: `${item}-${index}`, type: 'stop' };
   return {
     id: item.id || `${item.label || 'point'}-${index}`,
     label: item.label || item.name || `Stop ${index + 1}`,
     lat: Number.isFinite(Number(item.lat)) ? Number(item.lat) : null,
     lng: Number.isFinite(Number(item.lng)) ? Number(item.lng) : null,
+    type: item.type === 'via' ? 'via' : 'stop',
   };
 }
 
@@ -211,10 +234,11 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
           label: point.label,
           lat: point.lat ?? null,
           lng: point.lng ?? null,
+          type: point.type === 'via' ? 'via' : 'stop',
         },
       ],
     }));
-    setStatus(`Added stop: ${point.label}`);
+    setStatus(point.type === 'via' ? `Added via road: ${point.label}` : `Added pickup stop: ${point.label}`);
   };
 
   const removePoint = (index) => {
@@ -243,7 +267,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
     }
 
     const destination = points[points.length - 1].label;
-    const stops = points.slice(0, -1).map((point) => point.label);
+    const stops = points.slice(0, -1).filter((point) => point.type !== 'via').map((point) => point.label);
     const route = {
       id: form.id || makeId(`${form.number}-${form.name}`),
       number: form.number.trim(),
@@ -370,7 +394,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
           <div className="route-map-builder-title">
             <div>
               <h3>{editing ? 'Create Route on Map' : 'Saved Route Map'}</h3>
-              <p>{editing ? 'Search places or click the map. Last point becomes the destination.' : 'Select edit to change stops or order.'}</p>
+              <p>{editing ? 'Search for stops, single-click roads to shape the route, double-click pickups. Last point is the destination.' : 'Select edit to change stops or order.'}</p>
             </div>
             {!editing && selectedRoute && <button type="button" onClick={editSelectedRoute}>Edit this route</button>}
           </div>
@@ -396,7 +420,7 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
           )}
 
           <div className="route-builder-map-wrap">
-            <MapContainer center={[54.28, -1.25]} zoom={7} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
+            <MapContainer center={[54.28, -1.25]} zoom={7} scrollWheelZoom doubleClickZoom={false} style={{ height: '100%', width: '100%' }}>
               <TileLayer
                 attribution='&copy; OpenStreetMap contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -405,8 +429,8 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
               {mapPositions.length > 1 && <Polyline positions={mapPositions} weight={5} />}
               {mapPoints.map((point, index) => (
                 point.lat != null && point.lng != null ? (
-                  <Marker key={point.id || `${point.label}-${index}`} position={[point.lat, point.lng]} icon={builderStopIcon}>
-                    <Popup>{index + 1}. {point.label}</Popup>
+                  <Marker key={point.id || `${point.label}-${index}`} position={[point.lat, point.lng]} icon={point.type === 'via' ? builderViaIcon : builderStopIcon}>
+                    <Popup>{index + 1}. {point.type === 'via' ? 'Via road' : 'Pickup'}<br />{point.label}</Popup>
                   </Marker>
                 ) : null
               ))}
@@ -414,12 +438,17 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
           </div>
 
           <div className="route-builder-stop-panel">
-            <h4>{editing ? 'Plotted Stops' : selectedRoute ? `${selectedRoute.number} - ${selectedRoute.name}` : 'No route selected'}</h4>
+            <h4>{editing ? 'Plotted Route' : selectedRoute ? `${selectedRoute.number} - ${selectedRoute.name}` : 'No route selected'}</h4>
             {mapPoints.length === 0 && <p>No points yet. Search for a place or click the map.</p>}
             <ol className="route-stop-list builder-stop-list">
               {mapPoints.map((point, index) => (
                 <li key={point.id || `${point.label}-${index}`}>
-                  <span>{point.label}{index === mapPoints.length - 1 && mapPoints.length > 1 ? '  · destination' : ''}</span>
+                  <span>
+                    <small className={point.type === 'via' && !(index === mapPoints.length - 1 && mapPoints.length > 1) ? 'route-point-type via' : 'route-point-type stop'}>
+                      {index === mapPoints.length - 1 && mapPoints.length > 1 ? 'Destination' : point.type === 'via' ? 'Via road' : 'Pickup'}
+                    </small>
+                    {point.label}
+                  </span>
                   {editing && (
                     <div>
                       <button type="button" onClick={() => movePoint(index, -1)}>↑</button>

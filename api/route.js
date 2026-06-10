@@ -138,7 +138,11 @@ function valhallaInstructionType(type) {
 }
 
 async function buildValhallaRoute(points, body) {
-  const locations = points.map((point) => ({ lat: point.lat, lon: point.lng, type: 'break' }))
+  const locations = points.map((point, index) => ({
+    lat: point.lat,
+    lon: point.lng,
+    type: point.type === 'via' && index > 0 && index < points.length - 1 ? 'through' : 'break',
+  }))
   const requestBody = {
     locations,
     costing: 'truck',
@@ -243,6 +247,7 @@ export default async function handler(req, res) {
             lat: Number(point.lat),
             lng: Number(point.lng),
             label: String(point.label || point.name || 'Route point'),
+            type: point.type === 'via' ? 'via' : 'stop',
           }))
           .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
       : []
@@ -256,7 +261,7 @@ export default async function handler(req, res) {
     if (rawPoints.length >= 2) {
       const points = rawPoints
       const end = points[points.length - 1]
-      const waypointPoints = points.slice(1, -1).map((point) => ({ ...point, input: point.label }))
+      const waypointPoints = points.slice(1, -1).filter((point) => point.type !== 'via').map((point) => ({ ...point, input: point.label }))
       let built
       try {
         built = await buildValhallaRoute(points, body)

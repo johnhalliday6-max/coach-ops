@@ -2696,6 +2696,44 @@ body {
   align-items: center;
 }
 
+.builder-stop-list li > span {
+  display: grid;
+  gap: 4px;
+}
+
+.route-point-type {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.route-point-type.stop {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.route-point-type.via {
+  background: #e5e7eb;
+  color: #334155;
+}
+
+.route-via-marker {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #ffffff;
+  border: 3px solid #f59e0b;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28);
+  font-size: 18px;
+  line-height: 1;
+}
+
 .builder-stop-list button {
   border: 0;
   border-radius: 9px;

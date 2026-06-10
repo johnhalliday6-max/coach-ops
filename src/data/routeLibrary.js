@@ -80,7 +80,7 @@ export function prepareRouteTemplate(route, { reverse = false } = {}) {
     : [...(route.stops || []), route.destination].filter(Boolean).map((label) => ({ label }));
   const plotPoints = reverse ? sourcePoints.slice().reverse() : sourcePoints.slice();
   const destination = plotPoints[plotPoints.length - 1]?.label || route.destination;
-  const stops = plotPoints.slice(1, -1).map((point) => point.label).filter(Boolean);
+  const stops = plotPoints.slice(1, -1).filter((point) => point.type !== 'via').map((point) => point.label).filter(Boolean);
   return {
     ...route,
     id: reverse ? `${route.id || route.number}-reverse` : route.id,

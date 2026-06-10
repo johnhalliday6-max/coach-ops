@@ -47,6 +47,7 @@ export async function buildVehicleRoute(vehicle, routeInput) {
           lat: Number(point.lat),
           lng: Number(point.lng),
           label: String(point.label || point.name || 'Route point'),
+          type: point.type === 'via' ? 'via' : 'stop',
         }))
         .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
     : [];
@@ -58,7 +59,7 @@ export async function buildVehicleRoute(vehicle, routeInput) {
   const displayDestination = displayRouteDestination(routeInput, rawDestination);
 
   const stops = directPoints.length >= 2
-    ? directPoints.slice(1, -1).map((point) => point.label)
+    ? directPoints.slice(1, -1).filter((point) => point.type !== 'via').map((point) => point.label)
     : Array.isArray(routeInput.stops)
       ? routeInput.stops.map((item) => String(item).trim()).filter(Boolean)
       : [];
