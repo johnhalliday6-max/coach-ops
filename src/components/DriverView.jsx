@@ -780,10 +780,10 @@ export default function DriverView({ selectedFleet }) {
   }, [lastPosition?.lat, lastPosition?.lng, routeSummary?.updatedAt]);
 
 
-  const rerouteFromCurrentPosition = async () => {
+  const rerouteFromCurrentPosition = async (gpsPoint = lastPosition) => {
     const activeVehicle = currentVehicleRef.current || vehicle;
-    const current = lastPosition?.lat && lastPosition?.lng
-      ? { lat: Number(lastPosition.lat), lng: Number(lastPosition.lng), label: 'Current GPS position' }
+    const current = gpsPoint?.lat && gpsPoint?.lng
+      ? { lat: Number(gpsPoint.lat), lng: Number(gpsPoint.lng), label: 'Current GPS position' }
       : null;
     if (!current || !routeSummary?.end?.lat || !routeSummary?.end?.lng) {
       setRouteStatus('Off route - waiting for live GPS before recalculating');
@@ -845,6 +845,7 @@ export default function DriverView({ selectedFleet }) {
       setRouteSummary(saveData.route || rerouted);
       setActiveStepIndex(0);
       setOffRoute(false);
+      offRouteMissesRef.current = 0;
       setRouteStatus('Rerouted from current position');
     } catch (error) {
       console.error(error);
@@ -862,7 +863,7 @@ export default function DriverView({ selectedFleet }) {
     const routeProgress = distanceToRouteProgress(currentPoint, routeSummary.geometry || []);
     const routeDistance = routeProgress.distance;
     const speedMph = Number(lastPosition.speedMps) * 2.23694;
-    const offRouteLimit = Number.isFinite(speedMph) && speedMph > 20 ? 55 : 85;
+    const offRouteLimit = Number.isFinite(speedMph) && speedMph > 20 ? 35 : 55;
     const isOffRoute = routeDistance > offRouteLimit;
     setOffRoute(isOffRoute);
 
@@ -872,12 +873,13 @@ export default function DriverView({ selectedFleet }) {
     }
 
     offRouteMissesRef.current += 1;
-    const missesNeeded = Number.isFinite(speedMph) && speedMph > 15 ? 2 : 3;
+    const missesNeeded = Number.isFinite(speedMph) && speedMph > 12 ? 2 : 3;
+    setRouteStatus(offRouteMissesRef.current >= missesNeeded ? 'Off route - recalculating...' : 'Off route - checking GPS...');
 
     if (offRouteMissesRef.current >= missesNeeded && !rerouteLock.current && hasRouteGeometry(routeSummary)) {
       rerouteLock.current = true;
       window.setTimeout(() => {
-        rerouteFromCurrentPosition().finally(() => {
+        rerouteFromCurrentPosition(currentPoint).finally(() => {
           offRouteMissesRef.current = 0;
           window.setTimeout(() => {
             rerouteLock.current = false;

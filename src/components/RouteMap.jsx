@@ -502,8 +502,10 @@ export default function RouteMap({
   const freeFlowSpeed = trafficFlow?.freeFlowSpeed != null ? Math.round(Number(trafficFlow.freeFlowSpeed)) : null;
   const trafficState = trafficStatus(trafficFlow);
   const rawRouteLine = visibleRoute?.geometry?.length > 1 ? visibleRoute.geometry : [];
-  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine)) : 0;
-  const activeRouteLine = rawRouteLine.slice(trimIndex);
+  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine) - 8) : 0;
+  const activeRouteLine = navigationMode && hasLiveVehicle && rawRouteLine.length > 1
+    ? [[liveVehicle.lat, liveVehicle.lng], ...rawRouteLine.slice(trimIndex)]
+    : rawRouteLine.slice(trimIndex);
   const routeId = visibleRoute?.updatedAt || `${activeRouteLine.length}-${visibleRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;
   void showDefaultRoute;
