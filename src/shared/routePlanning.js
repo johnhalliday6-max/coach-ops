@@ -15,6 +15,22 @@ function displayRouteDestination(routeInput, fallback) {
   return fallback;
 }
 
+function metresBetween(a, b) {
+  if (!a || !b) return Infinity;
+  const lat1 = Number(a.lat);
+  const lng1 = Number(a.lng);
+  const lat2 = Number(b.lat);
+  const lng2 = Number(b.lng);
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return Infinity;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const radius = 6371000;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const h = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * radius * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
 export async function getVehicleStart(vehicle) {
   try {
     const trackingResponse = await fetch(`/api/tracking?${vehicleLookupParams(vehicle)}`);
@@ -58,15 +74,22 @@ export async function buildVehicleRoute(vehicle, routeInput) {
   if (!rawDestination) throw new Error('Destination required');
   const displayDestination = displayRouteDestination(routeInput, rawDestination);
 
-  const stops = directPoints.length >= 2
-    ? directPoints.slice(1, -1).filter((point) => point.type !== 'via').map((point) => point.label)
+  const liveStart = await getVehicleStart(vehicle);
+  const routePoints = directPoints.length >= 2
+    ? metresBetween(liveStart, directPoints[0]) > 60
+      ? [{ lat: liveStart.lat, lng: liveStart.lng, label: liveStart.label || 'Live vehicle GPS', type: 'start' }, ...directPoints]
+      : directPoints
+    : [];
+
+  const stops = routePoints.length >= 2
+    ? routePoints.slice(1, -1).filter((point) => point.type !== 'via' && point.type !== 'start').map((point) => point.label)
     : Array.isArray(routeInput.stops)
       ? routeInput.stops.map((item) => String(item).trim()).filter(Boolean)
       : [];
 
-  const start = directPoints.length >= 2
-    ? { lat: directPoints[0].lat, lng: directPoints[0].lng, label: directPoints[0].label }
-    : await getVehicleStart(vehicle);
+  const start = routePoints.length >= 2
+    ? { lat: routePoints[0].lat, lng: routePoints[0].lng, label: routePoints[0].label }
+    : liveStart;
 
   const response = await fetch('/api/route', {
     method: 'POST',
@@ -76,7 +99,7 @@ export async function buildVehicleRoute(vehicle, routeInput) {
       startLng: start.lng,
       destination: rawDestination,
       stops,
-      points: directPoints.length >= 2 ? directPoints : undefined,
+      points: routePoints.length >= 2 ? routePoints : undefined,
       height: vehicle.height,
       width: vehicle.width,
       length: vehicle.length,
