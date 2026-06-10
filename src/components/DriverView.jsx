@@ -664,6 +664,7 @@ export default function DriverView({ selectedFleet }) {
     setLastAction(sourceText);
     setNavMode(hasRouteGeometry(routeForVehicle));
     requestWakeLock();
+    await postOfficeRequest("ROUTE_SYNC", `${sourceText}: ${routeDisplayName(routeForVehicle)}`, "driver", { route: routeForVehicle });
   };
 
   const acceptRoutePush = async () => {
@@ -674,7 +675,7 @@ export default function DriverView({ selectedFleet }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: pendingRoutePush.id, accepted: true }),
     });
-    await postOfficeRequest("ROUTE_ACCEPTED", `Driver accepted office route: ${routeDisplayName(pendingRoutePush.route)}`);
+    await postOfficeRequest("ROUTE_ACCEPTED", `Driver accepted office route: ${routeDisplayName(pendingRoutePush.route)}`, "driver", { route: pendingRoutePush.route });
     setPendingRoutePush(null);
   };
 

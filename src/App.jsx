@@ -195,10 +195,14 @@ function App() {
 
   const getVehicleOfficeStatus = (vehicle, routeCache = officeRouteCache) => {
     const live = getLiveVehicle(vehicle);
-    if (isRecentTracking(live)) return { label: "Tracking", className: "tracking", icon: "📡" };
-    if (getVehicleRoute(vehicle, routeCache)) return { label: "Route Set", className: "route-set", icon: "🗺️" };
-    return { label: "Available", className: "available", icon: "⚪" };
+    const hasRoute = Boolean(getVehicleRoute(vehicle, routeCache));
+    if (isRecentTracking(live) && hasRoute) return { label: "Tracking + Route", className: "tracking route-set", icon: "GPS" };
+    if (isRecentTracking(live)) return { label: "Tracking", className: "tracking", icon: "GPS" };
+    if (hasRoute) return { label: "Route Set", className: "route-set", icon: "MAP" };
+    return { label: "Available", className: "available", icon: "OK" };
   };
+
+  const hasVehicleRoute = (vehicle, routeCache = officeRouteCache) => Boolean(getVehicleRoute(vehicle, routeCache));
 
   const companyForVehicle = (vehicle) => vehicle?.category || vehicle?.operator || "Unassigned";
 
@@ -477,8 +481,8 @@ function App() {
 
   const fleetStats = {
     total: filteredFleet.length,
-    tracking: filteredFleet.filter((v) => getVehicleOfficeStatus(v, officeRouteCache).className === "tracking").length,
-    routeSet: filteredFleet.filter((v) => getVehicleOfficeStatus(v, officeRouteCache).className === "route-set").length,
+    tracking: filteredFleet.filter((v) => Boolean(getLiveVehicle(v))).length,
+    routeSet: filteredFleet.filter((v) => hasVehicleRoute(v, officeRouteCache)).length,
     requests: officeRequests.length,
   };
 
