@@ -3289,3 +3289,91 @@ body {
     max-width: 132px;
   }
 }
+
+/* V3.24 road-test sat-nav corrections */
+.route-map-shell.navigation .coach-live-dot {
+  width: 42px;
+  height: 42px;
+  border-width: 4px;
+}
+
+.route-map-shell.navigation .coach-live-dot span {
+  font-size: 25px;
+  text-shadow: 0 0 8px rgba(32, 216, 107, 0.55);
+}
+
+.route-map-shell.navigation .coach-live-dot::after {
+  content: '';
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  width: 4px;
+  height: 14px;
+  border-radius: 999px;
+  background: #20d86b;
+  transform: translateX(-50%);
+  box-shadow: 0 0 8px rgba(32,216,107,.6);
+}
+
+.route-map-shell.navigation .map-follow-badge {
+  top: 198px !important;
+  right: 12px !important;
+  padding: 7px 10px;
+  font-size: 10px;
+}
+
+.route-map-shell.navigation .satnav-speed-panel,
+.satnav-speed-panel {
+  left: 10px !important;
+  bottom: 82px !important;
+}
+
+.route-map-shell.navigation .speed-limit-circle,
+.route-map-shell.navigation .current-speed-box,
+.speed-limit-circle,
+.current-speed-box {
+  width: 76px;
+  height: 76px;
+  border-width: 8px;
+}
+
+.route-map-shell.navigation .map-traffic-speed-badge,
+.map-traffic-speed-badge {
+  right: 10px !important;
+  bottom: 116px !important;
+  min-width: 96px;
+  max-width: 120px;
+}
+
+.route-map-shell.navigation .tomtom-debug-badge,
+.tomtom-debug-badge {
+  top: 198px !important;
+  left: 10px !important;
+  bottom: auto !important;
+  min-width: 92px;
+  max-width: 106px;
+  padding: 6px 8px;
+  opacity: .72;
+}
+
+.route-map-shell.navigation .tomtom-debug-badge small {
+  display: none;
+}
+
+.route-map-shell.navigation .map-heading-badge,
+.map-heading-badge {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .satnav-lane-strip {
+    top: 144px;
+    left: 18px;
+    right: 18px;
+    height: 38px;
+  }
+
+  .satnav-lane-strip strong {
+    max-width: 32%;
+  }
+}

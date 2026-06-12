@@ -217,6 +217,21 @@ function metresBetween(a, b) {
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
+function bearingBetween(a, b) {
+  if (!a || !b) return null;
+  const lat1 = Number(a.lat ?? a[0]);
+  const lng1 = Number(a.lng ?? a[1]);
+  const lat2 = Number(b.lat ?? b[0]);
+  const lng2 = Number(b.lng ?? b[1]);
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return null;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const toDeg = (value) => (value * 180) / Math.PI;
+  const y = Math.sin(toRad(lng2 - lng1)) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2))
+    - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lng2 - lng1));
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
 function nearestRouteIndex(position, geometry) {
   if (!position || !Array.isArray(geometry) || geometry.length === 0) return 0;
   let bestIndex = 0;
@@ -325,7 +340,9 @@ export default function RouteMap({
   const [displayVehicle, setDisplayVehicle] = useState(null);
   const [plannedRoute, setPlannedRoute] = useState(null);
   const [autoFollow, setAutoFollow] = useState(true);
+  const [movementHeading, setMovementHeading] = useState(null);
   const lastGoodTrafficFlowRef = useRef(null);
+  const lastHeadingPointRef = useRef(null);
   const lookupVehicle = useMemo(() => vehicle || { fleetNo, reg }, [vehicle, fleetNo, reg]);
 
   useEffect(() => {
@@ -487,8 +504,20 @@ export default function RouteMap({
   const visibleRoute = routeOverride || plannedRoute;
   const liveVehicle = navigationMode ? trackedVehicle : (displayVehicle || trackedVehicle);
   const hasLiveVehicle = Boolean(liveVehicle?.lat && liveVehicle?.lng);
-  const heading = Number(liveVehicle?.heading || 0);
-  const coachArrowHeading = navigationMode ? 0 : heading;
+  useEffect(() => {
+    if (!navigationMode || !hasLiveVehicle) return;
+    const current = { lat: liveVehicle.lat, lng: liveVehicle.lng };
+    const previous = lastHeadingPointRef.current;
+    if (previous && metresBetween(previous, current) > 8) {
+      const bearing = bearingBetween(previous, current);
+      if (Number.isFinite(bearing)) setMovementHeading(bearing);
+    }
+    lastHeadingPointRef.current = current;
+  }, [navigationMode, hasLiveVehicle, liveVehicle?.lat, liveVehicle?.lng]);
+
+  const gpsHeading = Number(liveVehicle?.heading);
+  const heading = Number.isFinite(gpsHeading) && gpsHeading > 0 ? gpsHeading : movementHeading;
+  const coachArrowHeading = navigationMode ? 0 : (Number.isFinite(heading) ? heading : 0);
   const mapBearing = navigationMode && hasLiveVehicle && Number.isFinite(heading) ? heading : 0;
   const coachIcon = useMemo(
     () =>
@@ -512,10 +541,8 @@ export default function RouteMap({
   const routeStops = Array.isArray(visibleRoute?.waypoints)
     ? visibleRoute.waypoints.filter((stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))
     : [];
-  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine) - 8) : 0;
-  const activeRouteLine = navigationMode && hasLiveVehicle && rawRouteLine.length > 1
-    ? [[liveVehicle.lat, liveVehicle.lng], ...rawRouteLine.slice(trimIndex)]
-    : rawRouteLine.slice(trimIndex);
+  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine)) : 0;
+  const activeRouteLine = rawRouteLine.slice(trimIndex);
   const routeId = visibleRoute?.updatedAt || `${activeRouteLine.length}-${visibleRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;
   void showDefaultRoute;
@@ -583,6 +610,12 @@ export default function RouteMap({
       {!navigationMode && visibleRoute?.waypoints?.map((stop, index) => (
         <Marker key={`${stop.label}-${index}`} position={[stop.lat, stop.lng]} icon={plannedStopIcon}>
           <Popup><strong>Stop {index + 1}</strong><br />{stop.label}</Popup>
+        </Marker>
+      ))}
+
+      {navigationMode && routeStops.map((stop, index) => (
+        <Marker key={`driver-stop-${stop.label}-${index}`} position={[stop.lat, stop.lng]} icon={driverStopIcon}>
+          <Popup><strong>Pickup stop {index + 1}</strong><br />{stop.label}</Popup>
         </Marker>
       ))}
 

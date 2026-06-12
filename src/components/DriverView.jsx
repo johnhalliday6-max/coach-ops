@@ -868,7 +868,7 @@ export default function DriverView({ selectedFleet }) {
     const routeProgress = distanceToRouteProgress(currentPoint, routeSummary.geometry || []);
     const routeDistance = routeProgress.distance;
     const speedMph = Number(lastPosition.speedMps) * 2.23694;
-    const offRouteLimit = Number.isFinite(speedMph) && speedMph > 20 ? 35 : 55;
+    const offRouteLimit = Number.isFinite(speedMph) && speedMph > 20 ? 25 : 40;
     const isOffRoute = routeDistance > offRouteLimit;
     setOffRoute(isOffRoute);
 
@@ -878,7 +878,7 @@ export default function DriverView({ selectedFleet }) {
     }
 
     offRouteMissesRef.current += 1;
-    const missesNeeded = Number.isFinite(speedMph) && speedMph > 12 ? 2 : 3;
+    const missesNeeded = Number.isFinite(speedMph) && speedMph > 12 ? 1 : 2;
     setRouteStatus(offRouteMissesRef.current >= missesNeeded ? 'Off route - recalculating...' : 'Off route - checking GPS...');
 
     if (offRouteMissesRef.current >= missesNeeded && !rerouteLock.current && hasRouteGeometry(routeSummary)) {
