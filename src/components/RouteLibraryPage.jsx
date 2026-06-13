@@ -431,6 +431,11 @@ export default function RouteLibraryPage({ selectedFleet, onRouteBuilt, onSelect
                 attribution='&copy; OpenStreetMap contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
+              <TileLayer
+                attribution="Map &copy; TomTom"
+                opacity={0.98}
+                url="/api/tomtom-flow-tile?kind=base&z={z}&x={x}&y={y}"
+              />
               {editing && <MapClickAdder onAdd={addPoint} />}
               {mapPositions.length > 1 && <Polyline positions={mapPositions} weight={5} />}
               {mapPoints.map((point, index) => (

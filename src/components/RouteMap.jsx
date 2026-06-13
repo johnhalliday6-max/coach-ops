@@ -142,28 +142,10 @@ function HeadingUpMap({ enabled, heading }) {
 
   useEffect(() => {
     const bearing = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-    const panes = [
-      map.getPane("tilePane"),
-      map.getPane("overlayPane"),
-      map.getPane("shadowPane"),
-      map.getPane("markerPane"),
-      map.getPane("tooltipPane"),
-      map.getPane("popupPane"),
-    ].filter(Boolean);
-
-    panes.forEach((pane) => {
-      pane.style.transformOrigin = "50% 50%";
-      pane.style.rotate = enabled ? `${-bearing}deg` : "";
-      pane.style.transition = enabled ? "rotate 0.35s ease-out" : "";
-    });
-
     map.getContainer().style.setProperty("--map-bearing", enabled ? `${bearing}deg` : "0deg");
+    map.invalidateSize();
 
     return () => {
-      panes.forEach((pane) => {
-        pane.style.rotate = "";
-        pane.style.transition = "";
-      });
       map.getContainer().style.setProperty("--map-bearing", "0deg");
     };
   }, [enabled, heading, map]);
@@ -517,7 +499,7 @@ export default function RouteMap({
 
   const gpsHeading = Number(liveVehicle?.heading);
   const heading = Number.isFinite(gpsHeading) && gpsHeading > 0 ? gpsHeading : movementHeading;
-  const coachArrowHeading = navigationMode ? 0 : (Number.isFinite(heading) ? heading : 0);
+  const coachArrowHeading = Number.isFinite(heading) ? heading : 0;
   const mapBearing = navigationMode && hasLiveVehicle && Number.isFinite(heading) ? heading : 0;
   const coachIcon = useMemo(
     () =>
@@ -541,7 +523,7 @@ export default function RouteMap({
   const routeStops = Array.isArray(visibleRoute?.waypoints)
     ? visibleRoute.waypoints.filter((stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))
     : [];
-  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine)) : 0;
+  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine) - 1) : 0;
   const activeRouteLine = rawRouteLine.slice(trimIndex);
   const routeId = visibleRoute?.updatedAt || `${activeRouteLine.length}-${visibleRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;
@@ -560,6 +542,11 @@ export default function RouteMap({
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <TileLayer
+        attribution="Map &copy; TomTom"
+        opacity={0.98}
+        url="/api/tomtom-flow-tile?kind=base&z={z}&x={x}&y={y}"
       />
       {!navigationMode && (
         <TileLayer

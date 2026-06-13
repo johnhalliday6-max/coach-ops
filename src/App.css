@@ -1897,7 +1897,7 @@ body {
 .driver-satnav-map .map-emoji-marker,
 .driver-satnav-map .leaflet-popup-content-wrapper,
 .driver-satnav-map .leaflet-popup-tip {
-  rotate: var(--map-bearing);
+  rotate: 0deg;
 }
 
 .driver-satnav-map .leaflet-control-zoom {
