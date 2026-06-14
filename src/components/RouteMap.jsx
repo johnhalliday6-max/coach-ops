@@ -83,7 +83,7 @@ function FollowCoach({ position, enabled, autoFollow, zoom = 17, navigationMode 
       // Keep the coach lower on screen so the road ahead takes most of the display.
       const offsetProjected = projected.subtract([0, size.y * 0.28]);
       const offsetLatLng = map.unproject(offsetProjected, targetZoom);
-      map.setView(offsetLatLng, targetZoom, { animate: true, duration: 0.45 });
+      map.setView(offsetLatLng, targetZoom, { animate: false });
       return;
     }
 
@@ -253,20 +253,53 @@ function distanceToSegmentMetres(position, a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function routeProgressIndex(position, geometry) {
-  if (!position || !Array.isArray(geometry) || geometry.length === 0) return 0;
-  if (geometry.length === 1) return 0;
+function projectPointOnSegment(position, a, b) {
+  if (!position || !a || !b) return null;
+  const lat = Number(position.lat ?? position[0]);
+  const lng = Number(position.lng ?? position[1]);
+  const lat1 = Number(a.lat ?? a[0]);
+  const lng1 = Number(a.lng ?? a[1]);
+  const lat2 = Number(b.lat ?? b[0]);
+  const lng2 = Number(b.lng ?? b[1]);
+  if (![lat, lng, lat1, lng1, lat2, lng2].every(Number.isFinite)) return null;
 
-  let bestIndex = nearestRouteIndex(position, geometry);
-  let bestDistance = Infinity;
+  const metresPerDegreeLat = 111320;
+  const metresPerDegreeLng = Math.cos((lat * Math.PI) / 180) * 111320;
+  const px = (lng - lng1) * metresPerDegreeLng;
+  const py = (lat - lat1) * metresPerDegreeLat;
+  const vx = (lng2 - lng1) * metresPerDegreeLng;
+  const vy = (lat2 - lat1) * metresPerDegreeLat;
+  const lengthSq = vx * vx + vy * vy;
+  if (!lengthSq) return { point: a, t: 0 };
+
+  const t = Math.max(0, Math.min(1, (px * vx + py * vy) / lengthSq));
+  return {
+    point: [lat1 + (lat2 - lat1) * t, lng1 + (lng2 - lng1) * t],
+    t,
+  };
+}
+
+function routeProgress(position, geometry) {
+  if (!position || !Array.isArray(geometry) || geometry.length === 0) {
+    return { index: 0, distance: Infinity, point: null };
+  }
+  if (geometry.length === 1) {
+    return { index: 0, distance: metresBetween(position, geometry[0]), point: geometry[0] };
+  }
+
+  let best = { index: nearestRouteIndex(position, geometry), distance: Infinity, point: geometry[0] };
   for (let index = 0; index < geometry.length - 1; index += 1) {
     const distance = distanceToSegmentMetres(position, geometry[index], geometry[index + 1]);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestIndex = index + 1;
+    if (distance < best.distance) {
+      const projected = projectPointOnSegment(position, geometry[index], geometry[index + 1]);
+      best = {
+        distance,
+        index: index + (projected?.t ?? 1),
+        point: projected?.point || geometry[index + 1],
+      };
     }
   }
-  return bestIndex;
+  return best;
 }
 
 function LerpVehicle({ target, setDisplayVehicle }) {
@@ -523,8 +556,11 @@ export default function RouteMap({
   const routeStops = Array.isArray(visibleRoute?.waypoints)
     ? visibleRoute.waypoints.filter((stop) => Number.isFinite(Number(stop.lat)) && Number.isFinite(Number(stop.lng)))
     : [];
-  const trimIndex = navigationMode && hasLiveVehicle ? Math.max(0, routeProgressIndex(liveVehicle, rawRouteLine) - 1) : 0;
-  const activeRouteLine = rawRouteLine.slice(trimIndex);
+  const liveProgress = navigationMode && hasLiveVehicle ? routeProgress(liveVehicle, rawRouteLine) : null;
+  const trimIndex = liveProgress ? Math.min(rawRouteLine.length - 1, Math.max(0, Math.floor(liveProgress.index) + 1)) : 0;
+  const activeRouteLine = liveProgress?.point && rawRouteLine.length > 1
+    ? [liveProgress.point, ...rawRouteLine.slice(trimIndex)]
+    : rawRouteLine.slice(trimIndex);
   const routeId = visibleRoute?.updatedAt || `${activeRouteLine.length}-${visibleRoute?.destination || "none"}`;
   const shouldShowRoute = activeRouteLine.length > 1;
   void showDefaultRoute;

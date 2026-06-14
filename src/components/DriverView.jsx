@@ -91,18 +91,51 @@ function distanceToSegmentMetres(position, a, b) {
 
 function distanceToRouteProgress(position, geometry) {
   if (!position || !Array.isArray(geometry) || geometry.length === 0) {
-    return { distance: Infinity, index: 0 };
+    return { distance: Infinity, index: 0, point: null };
   }
   if (geometry.length === 1) {
-    return { distance: metresBetween(position, geometry[0]), index: 0 };
+    return { distance: metresBetween(position, geometry[0]), index: 0, point: geometry[0] };
   }
 
-  let best = { distance: Infinity, index: 0 };
+  let best = { distance: Infinity, index: 0, point: geometry[0] };
   for (let index = 0; index < geometry.length - 1; index += 1) {
     const distance = distanceToSegmentMetres(position, geometry[index], geometry[index + 1]);
-    if (distance < best.distance) best = { distance, index: index + 1 };
+    if (distance < best.distance) {
+      const progress = progressOnSegment(position, geometry[index], geometry[index + 1]);
+      best = {
+        distance,
+        index: index + progress.t,
+        point: progress.point,
+      };
+    }
   }
   return best;
+}
+
+function progressOnSegment(position, a, b) {
+  const lat = Number(position.lat ?? position[0]);
+  const lng = Number(position.lng ?? position[1]);
+  const lat1 = Number(a.lat ?? a[0]);
+  const lng1 = Number(a.lng ?? a[1]);
+  const lat2 = Number(b.lat ?? b[0]);
+  const lng2 = Number(b.lng ?? b[1]);
+  if (![lat, lng, lat1, lng1, lat2, lng2].every(Number.isFinite)) {
+    return { t: 1, point: b };
+  }
+
+  const metresPerDegreeLat = 111320;
+  const metresPerDegreeLng = Math.cos((lat * Math.PI) / 180) * 111320;
+  const px = (lng - lng1) * metresPerDegreeLng;
+  const py = (lat - lat1) * metresPerDegreeLat;
+  const vx = (lng2 - lng1) * metresPerDegreeLng;
+  const vy = (lat2 - lat1) * metresPerDegreeLat;
+  const lengthSq = vx * vx + vy * vy;
+  const t = lengthSq ? Math.max(0, Math.min(1, (px * vx + py * vy) / lengthSq)) : 0;
+
+  return {
+    t,
+    point: [lat1 + (lat2 - lat1) * t, lng1 + (lng2 - lng1) * t],
+  };
 }
 
 function nearestRouteGeometryIndex(position, geometry) {
@@ -110,9 +143,9 @@ function nearestRouteGeometryIndex(position, geometry) {
   let bestIndex = 0;
   let bestDistance = Infinity;
   geometry.forEach((point, index) => {
-    const d = metresBetween(position, point);
-    if (d < bestDistance) {
-      bestDistance = d;
+    const distance = metresBetween(position, point);
+    if (distance < bestDistance) {
+      bestDistance = distance;
       bestIndex = index;
     }
   });
@@ -123,8 +156,17 @@ function instructionIndexFromRouteProgress(position, route) {
   const instructions = route?.instructions || [];
   const geometry = route?.geometry || [];
   if (!position || instructions.length === 0 || geometry.length === 0) return 0;
-  const shapeIndex = distanceToRouteProgress(position, geometry).index ?? nearestRouteGeometryIndex(position, geometry);
-  const next = instructions.findIndex((step) => Number(step.endShapeIndex ?? step.beginShapeIndex ?? 0) >= shapeIndex + 2);
+  const progress = distanceToRouteProgress(position, geometry);
+  const shapeIndex = Number(progress.index || 0);
+  const leadPoints = Number(position.speedMps) > 6 ? 2 : 1;
+  const next = instructions.findIndex((step, index) => {
+    if (index === 0 && shapeIndex < 1) return true;
+    const begin = Number.isFinite(Number(step.beginShapeIndex ?? step.endShapeIndex))
+      ? Number(step.beginShapeIndex ?? step.endShapeIndex)
+      : nearestRouteGeometryIndex(step.location, geometry);
+    if (!Number.isFinite(begin)) return false;
+    return begin > shapeIndex + leadPoints;
+  });
   if (next >= 0) return next;
   return Math.max(0, instructions.length - 1);
 }
@@ -1049,14 +1091,6 @@ export default function DriverView({ selectedFleet }) {
             </div>
           </div>
 
-          <div className="satnav-lane-strip" aria-hidden="true">
-            <span className="lane-muted">|</span>
-            <span className="lane-muted">|</span>
-            <span className="lane-active">^</span>
-            <span className="lane-active">^</span>
-            <strong>{nextStep?.roadName || routeSummary.routeEndLabel || routeSummary.destination}</strong>
-          </div>
-
           <div className="satnav-eta-strip">
             <span>ETA <strong>{etaFromMinutes(remainingNav.minutes)}</strong></span>
             <span>Remaining <strong>{remainingNav.miles || "--"} mi</strong></span>
@@ -1078,7 +1112,7 @@ export default function DriverView({ selectedFleet }) {
           <div className="satnav-speed-panel">
             <div className="speed-limit-circle">
               <span>LIMIT</span>
-              <strong>--</strong>
+              <strong>N/A</strong>
               <small>mph</small>
             </div>
             <div className="current-speed-box">

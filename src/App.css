@@ -1214,47 +1214,6 @@ body {
   font-size: 20px;
 }
 
-.satnav-lane-strip {
-  position: absolute;
-  left: 22px;
-  right: 22px;
-  top: 144px;
-  z-index: 1200;
-  height: 44px;
-  border-radius: 0 0 18px 18px;
-  background: rgba(12, 26, 45, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.22);
-  pointer-events: none;
-}
-
-.satnav-lane-strip span {
-  font-size: 25px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.satnav-lane-strip .lane-active {
-  color: #23d3ff;
-}
-
-.satnav-lane-strip .lane-muted {
-  color: rgba(255,255,255,0.38);
-}
-
-.satnav-lane-strip strong {
-  margin-left: 8px;
-  color: #dbeafe;
-  font-size: 13px;
-  max-width: 42%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .satnav-speed-panel {
   position: absolute;
   left: 18px;
@@ -3175,10 +3134,6 @@ body {
   background: #dce8d2;
 }
 
-.satnav-lane-strip {
-  border: 1px solid rgba(35, 211, 255, 0.24);
-}
-
 .route-map-shell.navigation .leaflet-control-zoom {
   display: none;
 }
@@ -3222,14 +3177,6 @@ body {
   .satnav-instruction-card p {
     font-size: 17px;
     margin-top: 4px;
-  }
-
-  .satnav-lane-strip {
-    left: 12px;
-    right: auto;
-    top: 110px;
-    width: min(54vw, 590px);
-    height: 34px;
   }
 
   .satnav-eta-strip {
@@ -3363,17 +3310,4 @@ body {
 .route-map-shell.navigation .map-heading-badge,
 .map-heading-badge {
   display: none;
-}
-
-@media (max-width: 700px) {
-  .satnav-lane-strip {
-    top: 144px;
-    left: 18px;
-    right: 18px;
-    height: 38px;
-  }
-
-  .satnav-lane-strip strong {
-    max-width: 32%;
-  }
 }
